@@ -128,7 +128,20 @@ activate_env() {
     return 1
   fi
   set -u
+  patch_env
   echo "Python env: $(command -v python)"
+}
+
+patch_env() {
+  # robosuite logs to the hard-coded file /tmp/robosuite.log. On a shared node that file can
+  # belong to another user, and then importing LIBERO fails with PermissionError. Point it
+  # at a file in our home instead. Safe to run every time: it only edits once.
+  local f
+  f=$(python -c "import importlib.util as u, os; s=u.find_spec('robosuite'); print(os.path.join(os.path.dirname(s.origin), 'utils', 'log_utils.py') if s else '')" 2>/dev/null)
+  if [[ -n "$f" && -f "$f" ]] && grep -q '"/tmp/robosuite.log"' "$f"; then
+    sed -i 's|"/tmp/robosuite.log"|__import__("os").path.expanduser("~/.robosuite.log")|' "$f"
+    echo "Patched robosuite log path in $f"
+  fi
 }
 
 # lerobot/smolvla_base was pretrained with cameras named camera1/camera2/camera3, while the
