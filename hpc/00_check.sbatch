@@ -3,8 +3,8 @@
 #   cd ~/curious-vla && sbatch hpc/00_check.sbatch
 # Checks: which GPU you got, that PyTorch can use it, and that LIBERO renders headless.
 #SBATCH --job-name=cvla-check
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpuqs
+#SBATCH --gres=gpu:a100:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4

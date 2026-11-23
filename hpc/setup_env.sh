@@ -1,5 +1,6 @@
 #!/bin/bash
-# One-time setup. Run this on the LOGIN node (coe-hpc1), not in a job:
+# One-time setup for a machine WITH internet access. HPC3 has none, so for HPC3 use
+# stage_from_desktop.sh instead (it builds the same env on the desktop and copies it over).
 #   bash ~/curious-vla/hpc/setup_env.sh
 # It installs Miniconda in your home directory, creates the conda env, installs LeRobot with
 # the SmolVLA and LIBERO extras, and downloads the models, the LIBERO assets and the demo dataset.
@@ -7,6 +8,7 @@
 set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/config.sh"
 
+export HPC_OFFLINE=0 HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0
 echo "== 1/5 Miniconda in $CONDA_ROOT"
 if [[ ! -x "$CONDA_ROOT/bin/conda" ]]; then
   installer="$HOME/miniconda-installer.sh"
@@ -28,7 +30,8 @@ echo "== 3/5 lerobot[smolvla,libero]==$LEROBOT_VERSION"
 # The torch wheels from PyPI bundle their own CUDA runtime, so the cluster's old CUDA modules
 # are not needed. They need a recent NVIDIA driver on the GPU node; 00_check.sbatch verifies it.
 pip install --upgrade pip
-pip install "lerobot[smolvla,libero]==$LEROBOT_VERSION"
+pip install "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION" --index-url "$TORCH_INDEX_URL"
+pip install "lerobot[smolvla,libero]==$LEROBOT_VERSION" "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION"
 
 echo "== 4/5 LIBERO config and assets"
 mkdir -p "$LIBERO_CONFIG_PATH"

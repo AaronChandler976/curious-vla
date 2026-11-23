@@ -4,8 +4,8 @@
 # near 0%, the setup is wrong, not the model.
 #   sbatch hpc/01_eval_reference.sbatch
 #SBATCH --job-name=cvla-eval-ref
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpuqs
+#SBATCH --gres=gpu:a100:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

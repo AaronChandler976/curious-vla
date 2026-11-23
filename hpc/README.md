@@ -11,7 +11,8 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | File | What it does | Where it runs |
 |---|---|---|
 | `config.sh` | All settings: paths, versions, suite and task ids, rendering | sourced by everything |
-| `setup_env.sh` | Installs Miniconda, the env and LeRobot 0.7.0; downloads models, LIBERO assets and the demo dataset | **login node**, once |
+| `stage_from_desktop.sh` | Builds the env on the desktop, packs it with conda-pack, downloads models, demos and LIBERO assets, copies it all to HPC3 and unpacks it | **desktop**, once |
+| `setup_env.sh` | The same setup done in place, for a machine that has internet (not HPC3) | machine with internet |
 | `00_check.sbatch` | GPU, PyTorch-on-GPU and headless LIBERO render check (~10 min) | GPU node |
 | `01_eval_reference.sbatch` | `lerobot-eval` of `HuggingFaceVLA/smolvla_libero` on our tasks | GPU node |
 | `02_finetune_demos.sbatch` | Fine-tunes `lerobot/smolvla_base` on N demos per task, then evaluates it; resumes after a timeout | GPU node |
@@ -21,34 +22,33 @@ The random and ICM exploration conditions will add their own jobs later and reus
 
 ## Which cluster
 
-Use **HPC3** (`ssh hpc3`, node g17), which has A100s. HPC1 (`ssh hpc`, coe-hpc1.sjsu.edu) only has P100s, which current PyTorch no longer supports. The `hpc` and `hpc3` aliases are set up in `~/.ssh/config` on Aaron's Ubuntu desktop, with key auth and a ProxyJump through `hpc`. The SJSU VPN must be on.
+Submit from **HPC3** (`ssh hpc3`, login node g17). The `hpc` and `hpc3` aliases are in `~/.ssh/config` on Aaron's Ubuntu desktop (key auth, ProxyJump through `hpc`), and the SJSU VPN must be on. A probe run on Nov 22, 2026 found:
+
+- **GPU partitions:** `gpuqs` (max 2 days), `gpuqm` (7 days) and `gpuql` (14 days). All three cover the same nodes: 4 A100 nodes (cs001-cs004), 3 H100 nodes (g16, g18, g19) and P100 nodes, which are too old for current PyTorch. The jobs request `gpuqs` with `--gres=gpu:a100:1`. Naming the type keeps you off the P100s. Change it in `config.sh`. `SLURM_GRES=gpu:h100:1` is the fallback if the A100 queue is long.
+- **No internet** on g17, so `git clone`, `pip` and Hugging Face downloads fail there. Everything is staged from the desktop, and jobs run with `HF_HUB_OFFLINE=1`.
+- **No conda or CUDA modules,** but Apptainer is installed. The env is a conda-pack tarball that brings its own Python and CUDA 12.6 runtime. The driver is 560.35 (CUDA 12.6), which is why torch is the cu126 build.
+- **Shared /home is 96% full** (5.4 TB free cluster-wide, no per-user quota shown). Delete old checkpoints in `runs/` when you no longer need them.
 
 ## Steps
 
 ```bash
-# 0. From the desktop, without cloning: a read-only look at HPC3's partitions, GPUs, quota and internet.
-curl -fsSL https://raw.githubusercontent.com/AaronChandler976/curious-vla/hpc-scripts/hpc/probe_cluster.sh \
-  | ssh hpc3 'bash -s' > hpc3_probe.txt
-#    Set SLURM_PARTITION (and SLURM_GRES if needed) in hpc/config.sh from what it shows.
-
-# 1. On HPC3:
-ssh hpc3
+# 1. On the desktop, VPN on (network and CPU only, so it can run while the GPU is busy):
 git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
-cd ~/curious-vla
-bash hpc/setup_env.sh            # once; run it on HPC3 itself, since home may not be shared with HPC1
-bash hpc/submit_baseline.sh      # check job first, then the eval and fine-tunes if it passes
+cd ~/curious-vla && bash hpc/stage_from_desktop.sh
+
+# 2. On HPC3:
+ssh hpc3
+cd ~/curious-vla && bash hpc/submit_baseline.sh
 squeue -u $USER
 ```
 
-Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the success rate.
+To update the scripts on HPC3 later, run `git pull` on the desktop and then re-run `stage_from_desktop.sh`. rsync only sends the changed files.
 
-## Things that are not confirmed yet
+Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the success rate. To bring results back to the desktop, run `rsync -a hpc3:curious-vla/runs/ ~/curious-vla/runs/`.
 
-The HPC web page is inconsistent and leaves these out. `probe_cluster.sh` gathers all of them in one go:
+## Still unconfirmed
 
-- **Partition on HPC3.** `SLURM_PARTITION` defaults to `gpu` and `SLURM_GRES` to `gpu:1`, which `submit_baseline.sh` passes to every job. Set them from `probe_cluster.sh` output. If you submit a single job by hand, add `-p <partition>`. `00_check` warns if it lands on a P100.
-- **Time limits.** The page says 48 h maximum on GPU nodes and 4 h by default, so every job sets `--time`. Fine-tunes resume from their last checkpoint if you resubmit after a timeout.
-- **Internet on compute nodes.** Not stated. `setup_env.sh` downloads everything on the login node. If jobs fail on downloads, add `export HPC_OFFLINE=1` to `config.sh`.
-- **Headless rendering.** EGL is not mentioned. If `00_check` fails at the render step, set `MUJOCO_GL=osmesa` in `config.sh`. It is slower but needs no GPU display driver.
+- **torch 2.9.1+cu126 on the compute nodes.** The A100 node's driver may differ from g17's. `00_check` prints both, and every other job waits for it to pass.
+- **Headless rendering.** If `00_check` fails at the render step, set `MUJOCO_GL=osmesa` in `config.sh`. It is slower, but it needs no GPU display driver.
 - **Camera key mapping.** `FINETUNE_RENAME_MAP` in `config.sh` maps the LIBERO camera names onto the ones SmolVLA was pretrained with. It has not been tested on a real run yet.
-- **Home quota.** Not stated. The conda env plus the LIBERO dataset could be tens of GB. Run `du -sh ~/miniconda3 ~/.cache/huggingface` after setup.
+- **Offline dataset loading.** If a job fails on a Hugging Face download, the cache copy is incomplete. Re-run `stage_from_desktop.sh`.

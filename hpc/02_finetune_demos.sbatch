@@ -5,8 +5,8 @@
 #   N_DEMOS=25 SEED=1 sbatch hpc/02_finetune_demos.sbatch
 # The variables are passed into the job because Slurm exports your environment by default.
 #SBATCH --job-name=cvla-ft-demos
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpuqs
+#SBATCH --gres=gpu:a100:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
