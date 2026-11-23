@@ -95,6 +95,8 @@ done
 step 7-format-check python hpc/check_exploration_format.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
   --explore-root "$LOG/exploration_icm" --suite "$LIBERO_SUITE" --task-ids "$LIBERO_TASK_IDS"
 sed "s/^/    /" "$LOG/7-format-check.log" | grep -v -i warn
+step 7b-episode-meta python hpc/episode_meta.py --repo "$DEMO_DATASET" --root "$DATA_ROOT"
+sed "s/^/    /" "$LOG/7b-episode-meta.log" | grep -v -i warn | grep -i "episode metadata" || true
 step 8-build-mix python hpc/build_mix.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
   --episodes "$EPISODES" --explore-root "$LOG/exploration_icm" --budget 60 --out "$LOG/mix"
 step 9-train-mix-2-steps lerobot-train \

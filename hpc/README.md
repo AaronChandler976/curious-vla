@@ -24,6 +24,7 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `03_collect.sbatch` | Collects random or ICM exploration data (rendering only needs a GPU), then runs the format check | GPU node, any type |
 | `collect_exploration.py` | The random and ICM (PPO on the ICM curiosity reward) explorers, recording in the demo dataset's exact format | called by 03 |
 | `check_exploration_format.py` | Compares exploration data with the demos: features, first-frame state, image orientation, action range | called by 03 and the dry run |
+| `episode_meta.py` | Checks the demo dataset's per-episode metadata against its data files and repairs it in memory (row order, data file pointers); `delete_episodes` fails without this | called by build_mix, the format check and the dry run |
 | `build_mix.py` | Selected demos + the first N exploration steps, demos repeated to ~50% of frames, demo normalization stats | called by 02 |
 | `submit_exploration.sh` | Submits both collections and the mixed fine-tunes that depend on them | HPC3 login node |
 | `status.sh` / `summarize_results.py` | Queue, recent job states, last error per log, and the results table (`runs/results.csv`) | HPC3 login node |

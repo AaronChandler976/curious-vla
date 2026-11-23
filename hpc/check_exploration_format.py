@@ -48,8 +48,12 @@ def main() -> None:
 
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
+    from episode_meta import repair
+
     demo = LeRobotDataset(args.demo_repo, root=args.demo_root)
     explore = LeRobotDataset(f"local/{args.explore_root.name}", root=args.explore_root)
+    repair(demo)
+    repair(explore)
     log = json.loads((args.explore_root / "exploration_log.json").read_text())
     task_ids = [int(t) for t in args.task_ids.split(",")]
     if args.demo_tasks:

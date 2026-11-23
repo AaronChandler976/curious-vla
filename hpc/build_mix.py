@@ -30,6 +30,8 @@ def main() -> None:
     from lerobot.datasets.dataset_tools import delete_episodes, merge_datasets
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
+    from episode_meta import repair
+
     work = args.out.parent / (args.out.name + ".parts")
     for d in (args.out, work):
         if d.exists():
@@ -38,6 +40,7 @@ def main() -> None:
 
     keep = set(json.loads(args.episodes))
     demo = LeRobotDataset(args.demo_repo, root=args.demo_root)
+    repair(demo)
     drop = [e for e in range(demo.meta.total_episodes) if e not in keep]
     demo_sub = delete_episodes(demo, drop, output_dir=work / "demos", repo_id="local/demos")
 
@@ -46,6 +49,7 @@ def main() -> None:
     if not use:
         raise SystemExit(f"no exploration episodes fit in a budget of {args.budget} steps")
     explore = LeRobotDataset(f"local/{args.explore_root.name}", root=args.explore_root)
+    repair(explore)
     drop = [e for e in range(explore.meta.total_episodes) if e not in set(use)]
     explore_sub = delete_episodes(explore, drop, output_dir=work / "explore", repo_id="local/explore") if drop else explore
 
