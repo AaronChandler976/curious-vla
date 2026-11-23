@@ -1,5 +1,6 @@
 #!/bin/bash
-# Check, offline, that everything the jobs load is in the cache on this machine. Read-only.
+# Check, offline, that everything the jobs load is in the cache on this machine. It only writes a
+# missing refs/main pointer in the Hugging Face cache; nothing else changes.
 #   ssh hpc3 'cd ~/curious-vla && bash hpc/verify_cache.sh'
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -7,8 +8,8 @@ source hpc/config.sh
 activate_env >/dev/null || exit 1
 ok=1
 for repo in "$BASE_POLICY" "$REFERENCE_POLICY" "$VLM_BACKBONE"; do
-  if path=$(hf_local_model "$repo" 2>/dev/null); then echo "OK   model   $repo -> $path"
-  else echo "MISSING model $repo"; ok=0; fi
+  if path=$(hf_local_model "$repo" 2>/tmp/cvla_verify_err); then echo "OK   model   $repo -> $path"
+  else echo "MISSING model $repo: $(tail -1 /tmp/cvla_verify_err)"; ok=0; fi
 done
 if root=$(dataset_root); then
   echo "OK   dataset $DEMO_DATASET -> $root ($(du -shL "$root" 2>/dev/null | cut -f1))"

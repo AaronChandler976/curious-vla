@@ -64,7 +64,28 @@ export VLM_BACKBONE="HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
 # Offline, the jobs load everything from local paths, so nothing asks the Hub which
 # revision is current. Run these after activate_env.
 hf_local_model() {  # prints the cached snapshot dir of a model repo, or fails
-  python -c "import sys; from huggingface_hub import snapshot_download; print(snapshot_download(sys.argv[1], local_files_only=True))" "$1"
+  python - "$1" <<'PYEOF'
+import os, sys
+from huggingface_hub import snapshot_download
+from huggingface_hub.constants import HF_HUB_CACHE
+repo = sys.argv[1]
+try:
+    print(snapshot_download(repo, local_files_only=True))
+    sys.exit(0)
+except Exception as e:
+    err = e
+# The cache needs refs/main to find the snapshot by name. A copied cache can lack it, so
+# if there is exactly one snapshot, point refs/main at it (transformers needs this too).
+d = os.path.join(HF_HUB_CACHE, "models--" + repo.replace("/", "--"))
+snaps = sorted(os.listdir(os.path.join(d, "snapshots"))) if os.path.isdir(os.path.join(d, "snapshots")) else []
+if len(snaps) == 1:
+    os.makedirs(os.path.join(d, "refs"), exist_ok=True)
+    with open(os.path.join(d, "refs", "main"), "w") as f:
+        f.write(snaps[0])
+    print(snapshot_download(repo, local_files_only=True))
+else:
+    sys.exit(f"{repo}: not usable offline ({err}); cache dir {d} has snapshots {snaps}")
+PYEOF
 }
 dataset_root() {  # prints the cached snapshot dir of the demo dataset, or fails
   local base="$HF_LEROBOT_HOME/hub/datasets--${DEMO_DATASET//\//--}/snapshots"
