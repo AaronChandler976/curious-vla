@@ -4,7 +4,7 @@
 #   EXPLORE_METHOD=random sbatch hpc/03_collect.sbatch
 #   EXPLORE_METHOD=icm    sbatch hpc/03_collect.sbatch
 # The GPU is only used for rendering (the explorers are small CPU networks), so any GPU type
-# works. submit_exploration.sh asks for a P100, which usually has no queue.
+# works; submit_exploration.sh asks for any free GPU.
 #SBATCH --job-name=cvla-collect
 #SBATCH --partition=gpuqs
 #SBATCH --gres=gpu:1

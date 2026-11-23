@@ -4,7 +4,8 @@
 #   sbatch hpc/02_finetune_demos.sbatch                              # demos only, 10 demos, seed 0
 #   N_DEMOS=25 SEED=1 sbatch hpc/02_finetune_demos.sbatch
 #   EXPLORE_METHOD=icm EXPLORE_STEPS=5000 N_DEMOS=10 sbatch hpc/02_finetune_demos.sbatch
-# With EXPLORE_METHOD set, the job first builds the demos + exploration mix (build_mix.py).
+# The job first builds its training dataset (build_dataset.py) and verifies it; with
+# EXPLORE_METHOD set, that dataset is the demos + exploration mix.
 # Everything else (base policy, steps, batch size, normalization stats, eval) is identical.
 # The variables are passed into the job because Slurm exports your environment by default.
 #SBATCH --job-name=cvla-ft-demos
@@ -44,19 +45,24 @@ EPISODES=$(python hpc/select_episodes.py --dataset "$DEMO_DATASET" --root "$DATA
 echo "Training on episodes: $EPISODES"
 [[ "$EPISODES" =~ ^\[[0-9,]+\]$ ]] || { echo "ERROR: episode selection did not return a JSON list" >&2; exit 1; }
 
+# Every condition trains on a fresh local dataset written by build_dataset.py (demos only, or
+# demos + the first EXPLORE_STEPS of an exploration run), verified frame by frame against the
+# raw source rows before training starts.
+SELECTION="$RUNS_DIR/selections/$RUN.json"
+BUILD_ARGS=()
 if [[ -n "$EXPLORE_METHOD" ]]; then
   EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
   [[ -f "$EXPLORE_ROOT/exploration_log.json" ]] || { echo "ERROR: no exploration data at $EXPLORE_ROOT; run 03_collect.sbatch first" >&2; exit 1; }
-  MIX_ROOT="$RUNS_DIR/mixdata/$RUN"
-  if [[ ! -f "$MIX_ROOT/mix_info.json" ]]; then
-    python hpc/build_mix.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" --episodes "$EPISODES" \
-      --explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS" --out "$MIX_ROOT"
-  fi
-  cat "$MIX_ROOT/mix_info.json"; echo
-  DATA_ARGS=(--dataset.repo_id="local/$RUN" --dataset.root="$MIX_ROOT")
-else
-  DATA_ARGS=(--dataset.repo_id="$DEMO_DATASET" --dataset.root="$DATA_ROOT" --dataset.episodes="$EPISODES")
+  BUILD_ARGS=(--explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS")
 fi
+TRAIN_DATA="$RUNS_DIR/traindata/$RUN"
+if [[ ! -f "$TRAIN_DATA/verified" ]]; then
+  python hpc/build_dataset.py --demo-root "$DATA_ROOT" --selection "$SELECTION" "${BUILD_ARGS[@]}" --out "$TRAIN_DATA"
+  python hpc/verify_training_data.py --root "$TRAIN_DATA" --selection "$SELECTION" --policy-dir "$BASE_DIR"
+  touch "$TRAIN_DATA/verified"
+fi
+cat "$TRAIN_DATA/mix_info.json"; echo
+DATA_ARGS=(--dataset.repo_id="local/$RUN" --dataset.root="$TRAIN_DATA")
 
 # lerobot-train refuses to reuse an existing output dir unless it is resuming, so the
 # episode selection above is saved under runs/selections/ instead of inside $OUT.
@@ -93,7 +99,7 @@ lerobot-eval \
   --output_dir="$OUT/eval"
 
 # /home is nearly full: keep only the final weights (and the 10k-step weights, for an
-# overfitting check), and drop optimizer states and the mixed dataset.
+# overfitting check), and drop optimizer states and the training dataset.
 bash hpc/cleanup_run.sh "$OUT"
-if [[ -n "$EXPLORE_METHOD" ]]; then rm -rf "$MIX_ROOT"; fi
+rm -rf "$TRAIN_DATA"
 echo "Done: $OUT"

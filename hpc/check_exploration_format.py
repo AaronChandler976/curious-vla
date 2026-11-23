@@ -20,15 +20,14 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_dataset import read_episodes, to_array  # noqa: E402
 
-def first_frames(ds, episodes, keys, limit=10):
-    out = {k: [] for k in keys}
-    for e in episodes[:limit]:
-        i = int(ds.meta.episodes["dataset_from_index"][e])
-        item = ds[i]
-        for k in keys:
-            out[k].append(item[k].numpy())
-    return {k: np.stack(v) for k, v in out.items()}
+
+def first_frames(root, episodes, keys, features, limit=10):
+    """First frame of each episode, read from the raw data rows (not through meta/episodes)."""
+    rows = read_episodes(root, list(episodes[:limit]), ["episode_index", "frame_index", "task_index", *keys])
+    return {k: np.stack([to_array(rows[e][k][0], features[k]) for e in episodes[:limit]]) for k in keys}
 
 
 def corr(a, b):
@@ -48,12 +47,8 @@ def main() -> None:
 
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-    from episode_meta import repair
-
     demo = LeRobotDataset(args.demo_repo, root=args.demo_root)
     explore = LeRobotDataset(f"local/{args.explore_root.name}", root=args.explore_root)
-    repair(demo)
-    repair(explore)
     log = json.loads((args.explore_root / "exploration_log.json").read_text())
     task_ids = [int(t) for t in args.task_ids.split(",")]
     if args.demo_tasks:
@@ -84,7 +79,8 @@ def main() -> None:
             problems.append(f"task {t}: {len(demo_eps)} demo and {len(exp_eps)} exploration episodes")
             continue
         keys = ["observation.state", *img_keys]
-        d, e = first_frames(demo, demo_eps, keys), first_frames(explore, exp_eps, keys)
+        d = first_frames(args.demo_root, demo_eps, keys, ft_d)
+        e = first_frames(args.explore_root, exp_eps, keys, ft_d)
         mu, sd = d["observation.state"].mean(0), d["observation.state"].std(0) + 1e-3
         z = np.abs(e["observation.state"].mean(0) - mu) / sd
         ok_state = bool((z < 3).all())
@@ -93,7 +89,7 @@ def main() -> None:
             problems.append(f"task {t}: first-frame state differs from demos (max z {z.max():.1f})")
         for k in img_keys:
             md, me = d[k].mean(0), e[k].mean(0)
-            same, flipped = corr(me, md), corr(me[:, ::-1, ::-1], md)
+            same, flipped = corr(me, md), corr(me[::-1, ::-1, :], md)  # images are H, W, C here
             tie = abs(same - flipped) < 1e-3  # symmetric images: orientation cannot be told apart
             ok_img = same > flipped or tie
             verdict = "UNDECIDED (symmetric images)" if tie else ("OK" if ok_img else "MISMATCH")

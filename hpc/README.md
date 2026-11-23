@@ -24,8 +24,9 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `03_collect.sbatch` | Collects random or ICM exploration data (rendering only needs a GPU), then runs the format check | GPU node, any type |
 | `collect_exploration.py` | The random and ICM (PPO on the ICM curiosity reward) explorers, recording in the demo dataset's exact format | called by 03 |
 | `check_exploration_format.py` | Compares exploration data with the demos: features, first-frame state, image orientation, action range | called by 03 and the dry run |
-| `episode_meta.py` | Checks the demo dataset's per-episode metadata against its data files and repairs it in memory (row order, data file pointers); `delete_episodes` fails without this | called by build_mix, the format check and the dry run |
-| `build_mix.py` | Selected demos + the first N exploration steps, demos repeated to ~50% of frames, demo normalization stats | called by 02 |
+| `build_dataset.py` | Writes each run's training set as a fresh local LeRobot dataset from the raw demo (and exploration) rows: demos only, or demos + the first N exploration steps with demos repeated to ~50% of frames; demo normalization stats | called by 02 and the dry run |
+| `verify_training_data.py` | Loads a training set exactly as `lerobot-train` does and checks sampled frames (state, images, the 50-step action chunk and its padding, instruction) against the raw source rows | called by 02, the dry run and `run_all.sh` |
+| `run_all.sh` | Dry run, then the check of the earlier demos-only runs (kept if their frames verify, otherwise cancelled and resubmitted), then the exploration jobs and cleanup | HPC3 login node |
 | `submit_exploration.sh` | Submits both collections and the mixed fine-tunes that depend on them | HPC3 login node |
 | `status.sh` / `summarize_results.py` | Queue, recent job states, last error per log, and the results table (`runs/results.csv`) | HPC3 login node |
 | `cleanup_run.sh` | Keeps only the final and 10k-step weights of a finished run | called by 02 |
@@ -57,6 +58,12 @@ squeue -u $USER
 #   SKIP_CHECK=1 bash hpc/submit_baseline.sh
 ```
 
+After the baseline, the rest of the experiment is one command (dry run first; nothing is submitted unless it passes):
+
+```bash
+ssh hpc3 'cd ~/curious-vla && bash hpc/run_all.sh'
+```
+
 To update the scripts on HPC3 later, run `git pull` on the desktop and then re-run `stage_from_desktop.sh`. rsync only sends the changed files.
 
 Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the success rate. To bring results back to the desktop, run `rsync -a hpc3:curious-vla/runs/ ~/curious-vla/runs/`.
@@ -67,3 +74,4 @@ Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the 
 - **Headless rendering.** If `00_check` fails at the render step, set `MUJOCO_GL=osmesa` in `config.sh`. It is slower, but it needs no GPU display driver.
 - **Feature format.** Fine-tunes start from a copy of `smolvla_base` whose config has the official LIBERO checkpoint's features: cameras `image`/`image2`, an 8-dim state and a 7-dim action. That copy is made by `make_base_policy.py`, which also checks the features against the dataset. Without it, training silently kept smolvla_base's 6-dim state, which the dry run caught. `dry_run.sh` checks that the trained checkpoint's features match the official checkpoint's.
 - **Offline dataset loading.** If a job fails on a Hugging Face download, the cache copy is incomplete. Re-run `stage_from_desktop.sh`.
+- **Demo dataset metadata.** The cached `HuggingFaceVLA/libero` snapshot's `meta/episodes` has data-file pointers that do not match its data files, so LeRobot's `delete_episodes`/`merge_datasets` cannot cut subsets from it. `build_dataset.py` reads only the raw rows (by `episode_index`/`frame_index`) and writes a new dataset whose metadata is consistent by construction, and `verify_training_data.py` checks every training set before its job trains on it.

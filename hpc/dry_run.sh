@@ -2,11 +2,12 @@
 # Run every job's code path once, tiny and on CPU, on the HPC3 login node, with no internet.
 # It catches setup errors in about 10 minutes instead of one queued GPU job at a time.
 #   ssh hpc3 'cd ~/curious-vla && bash hpc/dry_run.sh'
-# Steps: cache check, episode selection, a 5-step rollout of the reference policy, 2 training
-# steps from smolvla_base, a check that the checkpoint's features match the official LIBERO
-# checkpoint's, and a 5-step rollout of that checkpoint. Then the exploration path: tiny random
-# and ICM collections, the format check, the mixed dataset and 2 training steps on it.
-# ONLY_EXPLORATION=1 skips the policy steps 3-5 once they have passed.
+# Steps: cache check, episode selection, a 5-step rollout of the reference policy, then the
+# demos-only path (build the training dataset, verify its frames against the raw rows, 2 training
+# steps, the feature check against the official checkpoint, a 5-step rollout of the result), then
+# the exploration path (tiny random and ICM collections, the format check, the mixed dataset, its
+# verification and 2 training steps on it).
+# SKIP_EVALS=1 (or ONLY_EXPLORATION=1) skips the two rollouts (steps 3 and 5) once they have passed.
 # Logs go to runs/dryrun/. On a failure it prints the last 80 lines of that step's log.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -43,22 +44,32 @@ step 1b-base-policy python hpc/make_base_policy.py "$(hf_local_model "$BASE_POLI
 
 select_eps() {
   python hpc/select_episodes.py --dataset "$DEMO_DATASET" --root "$DATA_ROOT" --suite "$LIBERO_SUITE" \
-    --task-ids "$LIBERO_TASK_IDS" --n-demos 1 --seed 0 | tail -n 1 > "$LOG/episodes.txt"
+    --task-ids "$LIBERO_TASK_IDS" --n-demos 1 --seed 0 --out "$LOG/selection.json" | tail -n 1 > "$LOG/episodes.txt"
   grep -Eq '^\[[0-9,]+\]$' "$LOG/episodes.txt" || { echo "not a JSON list: $(cat "$LOG/episodes.txt")"; return 1; }
   cat "$LOG/episodes.txt"
 }
 step 2-select-episodes select_eps
 EPISODES=$(cat "$LOG/episodes.txt")
 
-if [[ "${ONLY_EXPLORATION:-0}" != "1" ]]; then
+SKIP_EVALS="${SKIP_EVALS:-${ONLY_EXPLORATION:-0}}"
+if [[ "$SKIP_EVALS" != "1" ]]; then
 step 3-eval-reference lerobot-eval \
   --policy.path="$REF_DIR" --policy.device=cpu \
   --env.type=libero --env.task="$LIBERO_SUITE" --env.task_ids="[$TASK0]" --env.episode_length=5 \
   --eval.n_episodes=1 --eval.batch_size=1 --output_dir="$LOG/eval_reference"
+fi
 
-step 4-train-2-steps lerobot-train \
+show() { sed "s/^/    /" "$LOG/$1.log" | grep -v -i -E "warn|torchcodec|it/s\]|examples/s" | tail -n "${2:-20}"; }
+
+# Demos only: the same build + verify + train path as 02_finetune_demos.sbatch.
+step 4-build-demos python hpc/build_dataset.py --demo-root "$DATA_ROOT" --selection "$LOG/selection.json" \
+  --out "$LOG/data_demos"
+step 4a-verify-demos python hpc/verify_training_data.py --root "$LOG/data_demos" \
+  --selection "$LOG/selection.json" --policy-dir "$BASE_DIR"
+show 4a-verify-demos 3
+step 4b-train-demos-2-steps lerobot-train \
   --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cpu \
-  --dataset.repo_id="$DEMO_DATASET" --dataset.root="$DATA_ROOT" --dataset.episodes="$EPISODES" \
+  --dataset.repo_id=local/data_demos --dataset.root="$LOG/data_demos" \
   --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
   --output_dir="$LOG/train" --job_name=dryrun
 
@@ -74,16 +85,16 @@ for k in sorted(set(got) | set(want)):
 sys.exit(0 if got == want else "trained checkpoint features differ from the official LIBERO checkpoint")
 PYEOF
 }
-step 4b-check-features check_features
-sed "s/^/    /" "$LOG/4b-check-features.log"
+step 4c-check-features check_features
+show 4c-check-features
 
+if [[ "$SKIP_EVALS" != "1" ]]; then
 step 5-eval-finetuned lerobot-eval \
   --policy.path="$LOG/train/checkpoints/last/pretrained_model" --policy.device=cpu \
   --env.type=libero --env.task="$LIBERO_SUITE" --env.task_ids="[$TASK0]" --env.episode_length=5 \
   --eval.n_episodes=1 --eval.batch_size=1 --output_dir="$LOG/eval_finetuned"
-
+fi
 rm -rf "$LOG/train/checkpoints"         # ~2 GB, and /home is nearly full
-fi  # ONLY_EXPLORATION=1 skips steps 3-5, which have already passed
 
 # Exploration conditions: tiny collections (2 episodes of 30 steps each), the format check
 # against the demos, building the mixed dataset, and 2 training steps on it.
@@ -94,15 +105,17 @@ for m in random icm; do
 done
 step 7-format-check python hpc/check_exploration_format.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
   --explore-root "$LOG/exploration_icm" --suite "$LIBERO_SUITE" --task-ids "$LIBERO_TASK_IDS"
-sed "s/^/    /" "$LOG/7-format-check.log" | grep -v -i warn
-step 7b-episode-meta python hpc/episode_meta.py --repo "$DEMO_DATASET" --root "$DATA_ROOT"
-sed "s/^/    /" "$LOG/7b-episode-meta.log" | grep -v -i warn | grep -i "episode metadata" || true
-step 8-build-mix python hpc/build_mix.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
-  --episodes "$EPISODES" --explore-root "$LOG/exploration_icm" --budget 60 --out "$LOG/mix"
+show 7-format-check
+step 8-build-mix python hpc/build_dataset.py --demo-root "$DATA_ROOT" --selection "$LOG/selection.json" \
+  --explore-root "$LOG/exploration_icm" --budget 60 --out "$LOG/data_mix"
+show 8-build-mix 1
+step 8a-verify-mix python hpc/verify_training_data.py --root "$LOG/data_mix" \
+  --selection "$LOG/selection.json" --policy-dir "$BASE_DIR"
+show 8a-verify-mix 3
 step 9-train-mix-2-steps lerobot-train \
   --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cpu \
-  --dataset.repo_id=local/mix --dataset.root="$LOG/mix" \
+  --dataset.repo_id=local/data_mix --dataset.root="$LOG/data_mix" \
   --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
   --output_dir="$LOG/train_mix" --job_name=dryrun_mix
-rm -rf "$LOG/train_mix/checkpoints" "$LOG/mix"
+rm -rf "$LOG/train_mix/checkpoints" "$LOG/data_mix" "$LOG/data_demos"
 echo "DRY RUN PASSED"

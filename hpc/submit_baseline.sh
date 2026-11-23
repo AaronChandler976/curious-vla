@@ -34,7 +34,7 @@ for n in $DEMO_BUDGETS; do
   for s in $SEEDS; do
     run="demos_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${n}_s${s}"
     if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then echo "fine-tune n=$n s=$s: already done"; continue; fi
-    j=$(N_DEMOS=$n SEED=$s sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/02_finetune_demos.sbatch)
+    j=$(N_DEMOS=$n SEED=$s sbatch --parsable --job-name="$run" "${GPU[@]}" "${DEP[@]}" hpc/02_finetune_demos.sbatch)
     echo "fine-tune n=$n s=$s: $j"
   done
 done

@@ -16,7 +16,7 @@ BUDGETS="${BUDGETS:-5000 20000}"
 DEMO_BUDGETS="${DEMO_BUDGETS:-10 25}"
 SEEDS="${SEEDS:-0}"
 EXTRA_SEEDS="${EXTRA_SEEDS-1 2}"          # at the first demo budget and the largest exploration budget
-COLLECT_GRES="${COLLECT_GRES:-gpu:p100:1}"
+COLLECT_GRES="${COLLECT_GRES:-gpu:1}"          # any GPU type: it is only used for rendering
 max_budget=$(echo $BUDGETS | tr ' ' '\n' | sort -n | tail -1)
 first_n=$(echo $DEMO_BUDGETS | awk '{print $1}')
 GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES")
@@ -25,7 +25,7 @@ suffix="${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
 for m in $METHODS; do
   DEP=()
   if [[ "${SKIP_COLLECT:-0}" != "1" ]]; then
-    c=$(EXPLORE_METHOD=$m COLLECT_STEPS=$max_budget sbatch --parsable --partition="$SLURM_PARTITION" \
+    c=$(EXPLORE_METHOD=$m COLLECT_STEPS=$max_budget sbatch --parsable --job-name="collect-$m" --partition="$SLURM_PARTITION" \
         --gres="$COLLECT_GRES" hpc/03_collect.sbatch)
     echo "collect $m ($max_budget steps): $c"
     DEP=(--dependency=afterok:$c)
@@ -34,7 +34,7 @@ for m in $METHODS; do
     local run="mix-$m-$1_${suffix}_n$2_s$3"
     if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then echo "  $run: already done"; return; fi
     local j
-    j=$(EXPLORE_METHOD=$m EXPLORE_STEPS=$1 N_DEMOS=$2 SEED=$3 sbatch --parsable "${GPU[@]}" "${DEP[@]}" \
+    j=$(EXPLORE_METHOD=$m EXPLORE_STEPS=$1 N_DEMOS=$2 SEED=$3 sbatch --parsable --job-name="$run" "${GPU[@]}" "${DEP[@]}" \
         hpc/02_finetune_demos.sbatch)
     echo "  $run: $j"
   }
