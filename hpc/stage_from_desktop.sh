@@ -70,7 +70,10 @@ ssh "$HOST" 'mkdir -p ~/curious-vla ~/.cache/huggingface ~/.cache/libero ~/cvla-
 rsync -a --partial --info=progress2 --exclude runs/ --exclude .git/ "$REPO/" "$HOST:curious-vla/"
 rsync -a --partial --info=progress2 "$TARBALL" "$HOST:cvla-env.tar.gz"
 rsync -a --partial --info=progress2 "$HF_HOME/" "$HOST:.cache/huggingface/"
-rsync -a --partial --info=progress2 "$HOME_FOR_LIBERO/.cache/libero/" "$HOST:.cache/libero/"
+# LIBERO only downloads assets here when the package doesn't ship them, so this may not exist.
+if [[ -d "$HOME_FOR_LIBERO/.cache/libero" ]]; then
+  rsync -a --partial --info=progress2 "$HOME_FOR_LIBERO/.cache/libero/" "$HOST:.cache/libero/"
+fi
 
 echo "== 4/4 Unpack the env on $HOST"
 ssh "$HOST" 'bash -s' <<'EOF'
