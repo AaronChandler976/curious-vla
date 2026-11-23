@@ -30,7 +30,7 @@ print("torch supports archs:", torch.cuda.get_arch_list())
 x = torch.randn(2048, 2048, device="cuda")
 print("matmul ok:", float((x @ x).mean()))
 if cap < (7, 0):
-    print("WARNING: this GPU is too old for this project (likely a P100). Ask for an A100/H100 node.")
+    print("WARNING: this GPU is too old for this project (likely a P100 from HPC1). Submit from HPC3 (ssh hpc3) to get an A100.")
 EOF
 
 python - <<EOF

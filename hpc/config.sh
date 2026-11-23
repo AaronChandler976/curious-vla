@@ -7,6 +7,13 @@ export RUNS_DIR="${RUNS_DIR:-$PROJECT_ROOT/runs}"
 export CONDA_ROOT="${CONDA_ROOT:-$HOME/miniconda3}"
 export CONDA_ENV="${CONDA_ENV:-curious-vla}"
 
+# Which GPUs to ask Slurm for. Run these jobs from HPC3 (`ssh hpc3`, node g17), which has
+# A100s; HPC1 (`ssh hpc`) only has P100s, which are too old for current PyTorch.
+# The partition name on HPC3 is not confirmed yet: run hpc/probe_cluster.sh and set it here.
+# submit_baseline.sh passes these on the sbatch command line, which overrides the #SBATCH lines.
+export SLURM_PARTITION="${SLURM_PARTITION:-gpu}"
+export SLURM_GRES="${SLURM_GRES:-gpu:1}"
+
 # Pinned versions. lerobot 0.7.0 needs Python >= 3.12 and torch >= 2.7.
 export PYTHON_VERSION="3.12"
 export LEROBOT_VERSION="0.7.0"

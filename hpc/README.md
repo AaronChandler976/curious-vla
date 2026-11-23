@@ -16,19 +16,27 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `01_eval_reference.sbatch` | `lerobot-eval` of `HuggingFaceVLA/smolvla_libero` on our tasks | GPU node |
 | `02_finetune_demos.sbatch` | Fine-tunes `lerobot/smolvla_base` on N demos per task, then evaluates it; resumes after a timeout | GPU node |
 | `select_episodes.py` | Picks N demo episodes per task (seeded) and records the choice in `runs/selections/` | called by 02 |
+| `probe_cluster.sh` | Read-only listing of partitions, GPUs, quota, modules and internet access | piped over `ssh hpc3` |
 | `submit_baseline.sh` | Submits 00, then 01 and the 02 sweep, which start only if 00 passed | login node |
+
+## Which cluster
+
+Use **HPC3** (`ssh hpc3`, node g17), which has A100s. HPC1 (`ssh hpc`, coe-hpc1.sjsu.edu) only has P100s, which current PyTorch no longer supports. The `hpc` and `hpc3` aliases are set up in `~/.ssh/config` on Aaron's Ubuntu desktop, with key auth and a ProxyJump through `hpc`. The SJSU VPN must be on.
 
 ## Steps
 
 ```bash
-# On campus or on the SJSU VPN:
-ssh <SJSU_ID>@coe-hpc1.sjsu.edu
-git clone https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
-cd ~/curious-vla
+# 0. From the desktop, without cloning: a read-only look at HPC3's partitions, GPUs, quota and internet.
+curl -fsSL https://raw.githubusercontent.com/AaronChandler976/curious-vla/hpc-scripts/hpc/probe_cluster.sh \
+  | ssh hpc3 'bash -s' > hpc3_probe.txt
+#    Set SLURM_PARTITION (and SLURM_GRES if needed) in hpc/config.sh from what it shows.
 
-bash hpc/setup_env.sh            # once, on the login node; downloads a lot, so check your quota
-sbatch hpc/00_check.sbatch       # wait for it, then read runs/logs/cvla-check-<id>.out
-bash hpc/submit_baseline.sh      # or skip the separate check: this script runs it first anyway
+# 1. On HPC3:
+ssh hpc3
+git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
+cd ~/curious-vla
+bash hpc/setup_env.sh            # once; run it on HPC3 itself, since home may not be shared with HPC1
+bash hpc/submit_baseline.sh      # check job first, then the eval and fine-tunes if it passes
 squeue -u $USER
 ```
 
@@ -36,9 +44,9 @@ Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the 
 
 ## Things that are not confirmed yet
 
-The HPC web page is inconsistent and leaves these out. Check them on the cluster with `sinfo`, `scontrol show partition gpu` and `module avail`:
+The HPC web page is inconsistent and leaves these out. `probe_cluster.sh` gathers all of them in one go:
 
-- **Partition and GPU type.** The scripts use `--partition=gpu --gres=gpu:1`. That partition mixes P100, A100 and H100 nodes. A P100 is too old for current PyTorch builds, and `00_check` warns if you get one. If `sinfo` shows a way to ask for a specific type (for example `--gres=gpu:a100:1` or a per-model partition), set it in the `#SBATCH` lines.
+- **Partition on HPC3.** `SLURM_PARTITION` defaults to `gpu` and `SLURM_GRES` to `gpu:1`, which `submit_baseline.sh` passes to every job. Set them from `probe_cluster.sh` output. If you submit a single job by hand, add `-p <partition>`. `00_check` warns if it lands on a P100.
 - **Time limits.** The page says 48 h maximum on GPU nodes and 4 h by default, so every job sets `--time`. Fine-tunes resume from their last checkpoint if you resubmit after a timeout.
 - **Internet on compute nodes.** Not stated. `setup_env.sh` downloads everything on the login node. If jobs fail on downloads, add `export HPC_OFFLINE=1` to `config.sh`.
 - **Headless rendering.** EGL is not mentioned. If `00_check` fails at the render step, set `MUJOCO_GL=osmesa` in `config.sh`. It is slower but needs no GPU display driver.
