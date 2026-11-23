@@ -9,7 +9,8 @@ set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 source hpc/config.sh
 activate_env >/dev/null || exit 1
-export CUDA_VISIBLE_DEVICES=""          # CPU only: the login node's GPU is not ours to use
+# The models run on CPU (--policy.device=cpu below). CUDA_VISIBLE_DEVICES is left alone:
+# robosuite's EGL renderer parses it, and an empty value crashes it.
 LOG="$RUNS_DIR/dryrun"
 rm -rf "$LOG" && mkdir -p "$LOG"
 
