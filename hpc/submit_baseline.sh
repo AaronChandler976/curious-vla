@@ -23,10 +23,17 @@ else
   echo "check job:        $check"
   DEP=(--dependency=afterok:$check)
 fi
-ref=$(sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/01_eval_reference.sbatch)
-echo "reference eval:   $ref"
+# SKIP_REF=1 skips the reference eval once it has run.
+if [[ "${SKIP_REF:-0}" == "1" ]]; then
+  echo "reference eval:   skipped"
+else
+  ref=$(sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/01_eval_reference.sbatch)
+  echo "reference eval:   $ref"
+fi
 for n in $DEMO_BUDGETS; do
   for s in $SEEDS; do
+    run="demos_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${n}_s${s}"
+    if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then echo "fine-tune n=$n s=$s: already done"; continue; fi
     j=$(N_DEMOS=$n SEED=$s sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/02_finetune_demos.sbatch)
     echo "fine-tune n=$n s=$s: $j"
   done
