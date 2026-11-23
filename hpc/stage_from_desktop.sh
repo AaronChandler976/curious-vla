@@ -56,8 +56,10 @@ echo "== 2/5 Download models, demo dataset and LIBERO assets"
 test -f "$LIBERO_ASSETS/scenes/libero_floor_base_style.xml" || { echo "LIBERO assets look incomplete in $LIBERO_ASSETS" >&2; exit 1; }
 "$ENV_PREFIX/bin/python" - <<EOF
 from huggingface_hub import snapshot_download
-for repo in ["$BASE_POLICY", "$REFERENCE_POLICY", "$VLM_BACKBONE"]:
+for repo in ["$BASE_POLICY", "$REFERENCE_POLICY"]:
     print("model:", snapshot_download(repo_id=repo))
+# The backbone without its ONNX exports, which SmolVLA never uses.
+print("backbone:", snapshot_download(repo_id="$VLM_BACKBONE", allow_patterns="$VLM_BACKBONE_FILES".split(",")))
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 ds = LeRobotDataset("$DEMO_DATASET")
 print(f"dataset: {ds.meta.total_episodes} episodes, {ds.meta.total_frames} frames")

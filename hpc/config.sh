@@ -63,14 +63,20 @@ export VLM_BACKBONE="HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
 
 # Offline, the jobs load everything from local paths, so nothing asks the Hub which
 # revision is current. Run these after activate_env.
-hf_local_model() {  # prints the cached snapshot dir of a model repo, or fails
-  python - "$1" <<'PYEOF'
+# SmolVLA reads the backbone's config, tokenizer and processor files, and its weights if the
+# checkpoint sets load_vlm_weights. The 25 ONNX exports in that repo are never used, so
+# staging and the offline check skip them.
+export VLM_BACKBONE_FILES='*.json,*.txt,*.jinja,*.model,model.safetensors'
+
+hf_local_model() {  # hf_local_model REPO [PATTERNS]: prints the cached snapshot dir, or fails
+  python - "$1" "${2:-}" <<'PYEOF'
 import os, sys
 from huggingface_hub import snapshot_download
 from huggingface_hub.constants import HF_HUB_CACHE
 repo = sys.argv[1]
+kw = {"allow_patterns": sys.argv[2].split(",")} if sys.argv[2] else {}
 try:
-    print(snapshot_download(repo, local_files_only=True))
+    print(snapshot_download(repo, local_files_only=True, **kw))
     sys.exit(0)
 except Exception as e:
     err = e
@@ -82,7 +88,7 @@ if len(snaps) == 1:
     os.makedirs(os.path.join(d, "refs"), exist_ok=True)
     with open(os.path.join(d, "refs", "main"), "w") as f:
         f.write(snaps[0])
-    print(snapshot_download(repo, local_files_only=True))
+    print(snapshot_download(repo, local_files_only=True, **kw))
 else:
     sys.exit(f"{repo}: not usable offline ({err}); cache dir {d} has snapshots {snaps}")
 PYEOF

@@ -8,7 +8,8 @@ source hpc/config.sh
 activate_env >/dev/null || exit 1
 ok=1
 for repo in "$BASE_POLICY" "$REFERENCE_POLICY" "$VLM_BACKBONE"; do
-  if path=$(hf_local_model "$repo" 2>/tmp/cvla_verify_err); then echo "OK   model   $repo -> $path"
+  pat=""; [[ "$repo" == "$VLM_BACKBONE" ]] && pat="$VLM_BACKBONE_FILES"
+  if path=$(hf_local_model "$repo" "$pat" 2>/tmp/cvla_verify_err); then echo "OK   model   $repo -> $path"
   else echo "MISSING model $repo: $(tail -1 /tmp/cvla_verify_err)"; ok=0; fi
 done
 if root=$(dataset_root); then
