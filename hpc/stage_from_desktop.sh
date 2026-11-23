@@ -33,7 +33,7 @@ mkdir -p "$STAGE"
 
 # Every conda call uses only conda-forge (--override-channels). That avoids the Anaconda
 # channels' Terms of Service prompt, which stops non-interactive installs.
-echo "== 1/4 Build and pack the env"
+echo "== 1/5 Build and pack the env"
 if [[ ! -x "$MC/bin/conda" ]]; then
   curl -fsSL -o "$STAGE/miniconda.sh" https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
   bash "$STAGE/miniconda.sh" -b -p "$MC" && rm -f "$STAGE/miniconda.sh"
@@ -49,12 +49,11 @@ if [[ ! -f "$TARBALL" ]]; then
 fi
 ls -lh "$TARBALL"
 
-echo "== 2/4 Download models, demo dataset and LIBERO assets"
-mkdir -p "$LIBERO_ASSETS"
-HOME_FOR_LIBERO="$STAGE/libero-home"      # LIBERO writes its assets under \$HOME/.cache/libero
-mkdir -p "$HOME_FOR_LIBERO"
-HOME="$HOME_FOR_LIBERO" LIBERO_CONFIG_PATH="$HOME_FOR_LIBERO/.libero" \
-  bash -c "echo n | '$ENV_PREFIX/bin/python' -c 'from libero.libero import get_libero_path; print(get_libero_path(\"assets\"))'"
+echo "== 2/5 Download models, demo dataset and LIBERO assets"
+# LIBERO's scene and object files (lerobot/libero-assets) are not in the pip package. They
+# go into the package's own assets/ folder on HPC3, which is where LIBERO looks first.
+"$ENV_PREFIX/bin/python" -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='lerobot/libero-assets', repo_type='dataset', local_dir='$LIBERO_ASSETS')"
+test -f "$LIBERO_ASSETS/scenes/libero_floor_base_style.xml" || { echo "LIBERO assets look incomplete in $LIBERO_ASSETS" >&2; exit 1; }
 "$ENV_PREFIX/bin/python" - <<EOF
 from huggingface_hub import snapshot_download
 for repo in ["$BASE_POLICY", "$REFERENCE_POLICY"]:
@@ -63,19 +62,15 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 ds = LeRobotDataset("$DEMO_DATASET")
 print(f"dataset: {ds.meta.total_episodes} episodes, {ds.meta.total_frames} frames")
 EOF
-du -sh "$HF_HOME" "$HOME_FOR_LIBERO/.cache/libero" 2>/dev/null || true
+du -sh "$HF_HOME" "$LIBERO_ASSETS" 2>/dev/null || true
 
-echo "== 3/4 Copy to $HOST (repo, env, caches)"
-ssh "$HOST" 'mkdir -p ~/curious-vla ~/.cache/huggingface ~/.cache/libero ~/cvla-env'
+echo "== 3/5 Copy to $HOST (repo, env, caches)"
+ssh "$HOST" 'mkdir -p ~/curious-vla ~/.cache/huggingface ~/cvla-env'
 rsync -a --partial --info=progress2 --exclude runs/ --exclude .git/ "$REPO/" "$HOST:curious-vla/"
 rsync -a --partial --info=progress2 "$TARBALL" "$HOST:cvla-env.tar.gz"
 rsync -a --partial --info=progress2 "$HF_HOME/" "$HOST:.cache/huggingface/"
-# LIBERO only downloads assets here when the package doesn't ship them, so this may not exist.
-if [[ -d "$HOME_FOR_LIBERO/.cache/libero" ]]; then
-  rsync -a --partial --info=progress2 "$HOME_FOR_LIBERO/.cache/libero/" "$HOST:.cache/libero/"
-fi
 
-echo "== 4/4 Unpack the env on $HOST"
+echo "== 4/5 Unpack the env on $HOST"
 ssh "$HOST" 'bash -s' <<'EOF'
 set -eo pipefail   # no -u: the activate script reads unset variables
 if [[ ! -f ~/cvla-env/bin/activate ]]; then
@@ -89,6 +84,10 @@ mkdir -p ~/.libero
 HF_HUB_OFFLINE=1 python -c "import torch, lerobot; print('torch', torch.__version__, 'lerobot', lerobot.__version__)"
 df -h ~ | tail -1
 EOF
+
+echo "== 5/5 Copy the LIBERO assets into the env on $HOST"
+rsync -a --partial --info=progress2 --exclude .cache/ "$LIBERO_ASSETS/" "$HOST:cvla-env/lib/python$PYTHON_VERSION/site-packages/libero/libero/assets/"
+ssh "$HOST" "test -f ~/cvla-env/lib/python$PYTHON_VERSION/site-packages/libero/libero/assets/scenes/libero_floor_base_style.xml && echo 'LIBERO assets in place'"
 
 echo
 echo "Staging done. Next: ssh $HOST, then  cd ~/curious-vla && bash hpc/submit_baseline.sh"
