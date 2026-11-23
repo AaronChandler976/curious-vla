@@ -22,6 +22,7 @@ def norm(text: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset", default="HuggingFaceVLA/libero")
+    p.add_argument("--root", default=None, help="local copy of the dataset (needed offline)")
     p.add_argument("--suite", required=True)
     p.add_argument("--task-ids", required=True, help="comma-separated ids inside the suite, e.g. 0,1")
     p.add_argument("--n-demos", type=int, required=True, help="demos per task")
@@ -36,7 +37,7 @@ def main() -> None:
     task_ids = [int(t) for t in args.task_ids.split(",")]
     wanted = {norm(suite.get_task(t).language): t for t in task_ids}
 
-    meta = LeRobotDatasetMetadata(args.dataset)
+    meta = LeRobotDatasetMetadata(args.dataset, root=args.root)
     by_task: dict[int, list[int]] = {t: [] for t in task_ids}
     for row in meta.episodes:
         for task_text in row["tasks"]:

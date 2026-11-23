@@ -14,13 +14,20 @@ SEEDS="${SEEDS:-0}"
 GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES")
 echo "Submitting to partition $SLURM_PARTITION with --gres=$SLURM_GRES on $(hostname)"
 
-check=$(sbatch --parsable "${GPU[@]}" hpc/00_check.sbatch)
-echo "check job:        $check"
-ref=$(sbatch --parsable "${GPU[@]}" --dependency=afterok:$check hpc/01_eval_reference.sbatch)
+# SKIP_CHECK=1 skips the GPU check once it has passed on this cluster.
+if [[ "${SKIP_CHECK:-0}" == "1" ]]; then
+  DEP=()
+  echo "check job:        skipped"
+else
+  check=$(sbatch --parsable "${GPU[@]}" hpc/00_check.sbatch)
+  echo "check job:        $check"
+  DEP=(--dependency=afterok:$check)
+fi
+ref=$(sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/01_eval_reference.sbatch)
 echo "reference eval:   $ref"
 for n in $DEMO_BUDGETS; do
   for s in $SEEDS; do
-    j=$(N_DEMOS=$n SEED=$s sbatch --parsable "${GPU[@]}" --dependency=afterok:$check hpc/02_finetune_demos.sbatch)
+    j=$(N_DEMOS=$n SEED=$s sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/02_finetune_demos.sbatch)
     echo "fine-tune n=$n s=$s: $j"
   done
 done

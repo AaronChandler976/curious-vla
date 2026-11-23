@@ -25,7 +25,12 @@ N_EVAL_EPISODES="${N_EVAL_EPISODES:-50}"
 RUN="demos_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${N_DEMOS}_s${SEED}"
 OUT="$RUNS_DIR/$RUN"
 
-EPISODES=$(python hpc/select_episodes.py --dataset "$DEMO_DATASET" --suite "$LIBERO_SUITE" \
+DATA_ROOT=$(dataset_root)
+BASE_DIR=$(hf_local_model "$BASE_POLICY")
+echo "Dataset: $DATA_ROOT"
+echo "Base policy: $BASE_DIR"
+
+EPISODES=$(python hpc/select_episodes.py --dataset "$DEMO_DATASET" --root "$DATA_ROOT" --suite "$LIBERO_SUITE" \
   --task-ids "$LIBERO_TASK_IDS" --n-demos "$N_DEMOS" --seed "$SEED" --out "$RUNS_DIR/selections/$RUN.json")
 echo "Training on episodes: $EPISODES"
 
@@ -38,11 +43,12 @@ if [[ -d "$OUT/checkpoints/last" ]]; then
   lerobot-train --resume=true --config_path="$OUT/checkpoints/last/pretrained_model/train_config.json"
 else
 lerobot-train \
-  --policy.path="$BASE_POLICY" \
+  --policy.path="$BASE_DIR" \
   --policy.push_to_hub=false \
   --policy.device=cuda \
   --rename_map="$FINETUNE_RENAME_MAP" \
   --dataset.repo_id="$DEMO_DATASET" \
+  --dataset.root="$DATA_ROOT" \
   --dataset.episodes="$EPISODES" \
   --batch_size="$BATCH_SIZE" \
   --steps="$STEPS" \

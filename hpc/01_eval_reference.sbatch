@@ -19,8 +19,11 @@ activate_env
 N_EPISODES="${N_EPISODES:-50}"   # rollouts per task
 OUT="$RUNS_DIR/eval_reference/${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_${SLURM_JOB_ID:-local}"
 
+POLICY_DIR=$(hf_local_model "$REFERENCE_POLICY")
+echo "Policy: $POLICY_DIR"
+
 lerobot-eval \
-  --policy.path="$REFERENCE_POLICY" \
+  --policy.path="$POLICY_DIR" \
   --env.type=libero \
   --env.task="$LIBERO_SUITE" \
   --env.task_ids="[$LIBERO_TASK_IDS]" \

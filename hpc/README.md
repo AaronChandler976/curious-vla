@@ -18,6 +18,7 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `02_finetune_demos.sbatch` | Fine-tunes `lerobot/smolvla_base` on N demos per task, then evaluates it; resumes after a timeout | GPU node |
 | `select_episodes.py` | Picks N demo episodes per task (seeded) and records the choice in `runs/selections/` | called by 02 |
 | `probe_cluster.sh` | Read-only listing of partitions, GPUs, quota, modules and internet access | piped over `ssh hpc3` |
+| `verify_cache.sh` | Offline check that every model, the dataset and the LIBERO assets are cached | HPC3 login node |
 | `submit_baseline.sh` | Submits 00, then 01 and the 02 sweep, which start only if 00 passed | login node |
 
 ## Which cluster
@@ -42,6 +43,8 @@ cd ~/curious-vla && bash hpc/stage_from_desktop.sh
 ssh hpc3
 cd ~/curious-vla && bash hpc/submit_baseline.sh
 squeue -u $USER
+# Once the check job has passed on HPC3, later submissions can skip it:
+#   SKIP_CHECK=1 bash hpc/submit_baseline.sh
 ```
 
 To update the scripts on HPC3 later, run `git pull` on the desktop and then re-run `stage_from_desktop.sh`. rsync only sends the changed files.

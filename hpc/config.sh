@@ -54,7 +54,29 @@ export PYOPENGL_PLATFORM="${PYOPENGL_PLATFORM:-$MUJOCO_GL}"
 if [[ "${HPC_OFFLINE:-1}" == "1" ]]; then
   export HF_HUB_OFFLINE=1
   export HF_DATASETS_OFFLINE=1
+  export TRANSFORMERS_OFFLINE=1
 fi
+
+# SmolVLA builds its backbone from this repo even when it loads a fine-tuned checkpoint,
+# so it has to be in the cache too.
+export VLM_BACKBONE="HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+
+# Offline, the jobs load everything from local paths, so nothing asks the Hub which
+# revision is current. Run these after activate_env.
+hf_local_model() {  # prints the cached snapshot dir of a model repo, or fails
+  python -c "import sys; from huggingface_hub import snapshot_download; print(snapshot_download(sys.argv[1], local_files_only=True))" "$1"
+}
+dataset_root() {  # prints the cached snapshot dir of the demo dataset, or fails
+  local base="$HF_LEROBOT_HOME/hub/datasets--${DEMO_DATASET//\//--}/snapshots"
+  local best="" n=0 c d
+  for d in "$base"/*/; do
+    [[ -f "$d/meta/info.json" ]] || continue
+    c=$(find -L "$d" -type f | wc -l)
+    if (( c > n )); then n=$c; best=${d%/}; fi
+  done
+  [[ -n "$best" ]] || { echo "ERROR: no cached copy of $DEMO_DATASET under $base" >&2; return 1; }
+  echo "$best"
+}
 
 activate_env() {
   # Jobs use the env that stage_from_desktop.sh unpacked into $PACKED_ENV_DIR. A conda
