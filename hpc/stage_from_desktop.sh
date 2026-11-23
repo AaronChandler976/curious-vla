@@ -2,7 +2,7 @@
 # HPC3 (g17) has no internet, so everything is downloaded on the desktop and copied over.
 # Run this ON THE UBUNTU DESKTOP, from a clone of this branch, with the SJSU VPN on:
 #   git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
-#   (or, if ~/curious-vla already exists:  cd ~/curious-vla && git fetch origin && git switch hpc-scripts)
+#   (or, if ~/curious-vla already exists:  cd ~/curious-vla && git fetch origin && git switch hpc-scripts && git pull)
 #   cd ~/curious-vla && bash hpc/stage_from_desktop.sh
 # Staging goes to ~/cvla-stage on the desktop and to your home on HPC3. Don't move it to /scratch
 # on HPC3: files there are deleted 21 days into each semester.

@@ -35,7 +35,7 @@ Submit from **HPC3** (`ssh hpc3`, login node g17). The `hpc` and `hpc3` aliases 
 ```bash
 # 1. On the desktop, VPN on (network and CPU only, so it can run while the GPU is busy):
 git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
-#   (already have ~/curious-vla?  cd ~/curious-vla && git fetch origin && git switch hpc-scripts)
+#   (already have ~/curious-vla?  cd ~/curious-vla && git fetch origin && git switch hpc-scripts && git pull)
 cd ~/curious-vla && bash hpc/stage_from_desktop.sh
 
 # 2. On HPC3:
