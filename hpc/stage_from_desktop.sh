@@ -75,7 +75,7 @@ rsync -a --partial --info=progress2 "$HOME_FOR_LIBERO/.cache/libero/" "$HOST:.ca
 echo "== 4/4 Unpack the env on $HOST"
 ssh "$HOST" 'bash -s' <<'EOF'
 set -euo pipefail
-if [[ ! -x ~/cvla-env/bin/conda-unpack ]]; then
+if [[ ! -f ~/cvla-env/bin/activate ]]; then
   tar -xzf ~/cvla-env.tar.gz -C ~/cvla-env
   ~/cvla-env/bin/conda-unpack
 fi

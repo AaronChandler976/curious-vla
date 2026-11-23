@@ -57,13 +57,27 @@ if [[ "${HPC_OFFLINE:-1}" == "1" ]]; then
 fi
 
 activate_env() {
+  # Jobs use the env that stage_from_desktop.sh unpacked into $PACKED_ENV_DIR. A conda
+  # install on the cluster is only a fallback, for machines set up with setup_env.sh.
+  # Activation scripts touch unset variables, so `set -u` is paused around them.
   # shellcheck disable=SC1091
+  set +u
   if [[ -f "$PACKED_ENV_DIR/bin/activate" ]]; then
     source "$PACKED_ENV_DIR/bin/activate"
-  else
+  elif [[ -f "$CONDA_ROOT/etc/profile.d/conda.sh" ]]; then
     source "$CONDA_ROOT/etc/profile.d/conda.sh"
     conda activate "$CONDA_ENV"
+  else
+    set -u
+    echo "ERROR: no Python env found on $(hostname)." >&2
+    echo "  Expected the packed env at $PACKED_ENV_DIR/bin/activate." >&2
+    echo "  If ~/cvla-env.tar.gz exists, unpack it on the login node with:" >&2
+    echo "    mkdir -p ~/cvla-env && tar -xzf ~/cvla-env.tar.gz -C ~/cvla-env && ~/cvla-env/bin/conda-unpack" >&2
+    echo "  Otherwise re-run hpc/stage_from_desktop.sh on the desktop." >&2
+    return 1
   fi
+  set -u
+  echo "Python env: $(command -v python)"
 }
 
 # lerobot/smolvla_base was pretrained with cameras named camera1/camera2/camera3, while the
