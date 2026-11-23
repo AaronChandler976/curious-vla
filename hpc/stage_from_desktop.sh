@@ -59,7 +59,8 @@ from huggingface_hub import snapshot_download
 for repo in ["$BASE_POLICY", "$REFERENCE_POLICY"]:
     print("model:", snapshot_download(repo_id=repo))
 # The backbone without its ONNX exports, which SmolVLA never uses.
-print("backbone:", snapshot_download(repo_id="$VLM_BACKBONE", allow_patterns="$VLM_BACKBONE_FILES".split(",")))
+for repo in "$VLM_BACKBONES".split():
+    print("backbone:", snapshot_download(repo_id=repo, allow_patterns="$VLM_BACKBONE_FILES".split(",")))
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 ds = LeRobotDataset("$DEMO_DATASET")
 print(f"dataset: {ds.meta.total_episodes} episodes, {ds.meta.total_frames} frames")

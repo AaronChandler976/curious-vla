@@ -7,8 +7,8 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 source hpc/config.sh
 activate_env >/dev/null || exit 1
 ok=1
-for repo in "$BASE_POLICY" "$REFERENCE_POLICY" "$VLM_BACKBONE"; do
-  pat=""; [[ "$repo" == "$VLM_BACKBONE" ]] && pat="$VLM_BACKBONE_FILES"
+for repo in "$BASE_POLICY" "$REFERENCE_POLICY" $VLM_BACKBONES; do
+  pat=""; [[ " $VLM_BACKBONES " == *" $repo "* ]] && pat="$VLM_BACKBONE_FILES"
   if path=$(hf_local_model "$repo" "$pat" 2>/tmp/cvla_verify_err); then echo "OK   model   $repo -> $path"
   else echo "MISSING model $repo: $(tail -1 /tmp/cvla_verify_err)"; ok=0; fi
 done
@@ -16,8 +16,8 @@ done
 for repo in "$BASE_POLICY" "$REFERENCE_POLICY"; do
   dir=$(hf_local_model "$repo" 2>/dev/null) || continue
   vlm=$(python -c "import json,sys; print(json.load(open(sys.argv[1])).get('vlm_model_name',''))" "$dir/config.json")
-  if [[ -n "$vlm" && "$vlm" != "$VLM_BACKBONE" ]]; then
-    echo "MISSING $repo uses backbone $vlm, but staging fetched $VLM_BACKBONE"; ok=0
+  if [[ -n "$vlm" && " $VLM_BACKBONES " != *" $vlm "* ]]; then
+    echo "MISSING $repo uses backbone $vlm, which is not in VLM_BACKBONES in config.sh"; ok=0
   else
     echo "OK   backbone of $repo is ${vlm:-unset}"
   fi

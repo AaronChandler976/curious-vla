@@ -59,7 +59,9 @@ fi
 
 # SmolVLA builds its backbone from this repo even when it loads a fine-tuned checkpoint,
 # so it has to be in the cache too.
-export VLM_BACKBONE="HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+# smolvla_base uses the Video-Instruct backbone; HuggingFaceVLA/smolvla_libero uses the plain
+# Instruct one (found by the dry run, Nov 23 2026). Space-separated.
+export VLM_BACKBONES="HuggingFaceTB/SmolVLM2-500M-Video-Instruct HuggingFaceTB/SmolVLM2-500M-Instruct"
 
 # Offline, the jobs load everything from local paths, so nothing asks the Hub which
 # revision is current. Run these after activate_env.
