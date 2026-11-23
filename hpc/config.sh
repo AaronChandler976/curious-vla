@@ -13,7 +13,9 @@ export PACKED_ENV_DIR="${PACKED_ENV_DIR:-$HOME/cvla-env}"
 # Which GPUs to ask Slurm for. Submit from HPC3 (`ssh hpc3`, login node g17). From the probe of
 # Nov 22 2026: gpuqs (max 2 days), gpuqm (7 days) and gpuql (14 days) share the same nodes:
 # A100s on cs001-cs004, H100s on g16/g18/g19, and P100s (too old for current PyTorch) on g*.
-# Always name the GPU type in the gres. If the A100 queue is long, try SLURM_GRES=gpu:h100:1.
+# Always name the GPU type in the gres. If the A100 queue is long, try SLURM_GRES=gpu:h100:1,
+# or the NSF H100 queue: SLURM_PARTITION=nsfq SLURM_GRES=gpu:h100:1 (g20-g32, max 24 h per job,
+# at most 6 nodes per user). Our jobs ask for 24 h or less, so they fit.
 # submit_baseline.sh passes these on the sbatch command line, which overrides the #SBATCH lines.
 export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs}"
 export SLURM_GRES="${SLURM_GRES:-gpu:a100:1}"
