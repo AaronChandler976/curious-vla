@@ -31,8 +31,9 @@ echo "Dataset: $DATA_ROOT"
 echo "Base policy: $BASE_DIR"
 
 EPISODES=$(python hpc/select_episodes.py --dataset "$DEMO_DATASET" --root "$DATA_ROOT" --suite "$LIBERO_SUITE" \
-  --task-ids "$LIBERO_TASK_IDS" --n-demos "$N_DEMOS" --seed "$SEED" --out "$RUNS_DIR/selections/$RUN.json")
+  --task-ids "$LIBERO_TASK_IDS" --n-demos "$N_DEMOS" --seed "$SEED" --out "$RUNS_DIR/selections/$RUN.json" | tail -n 1)
 echo "Training on episodes: $EPISODES"
+[[ "$EPISODES" =~ ^\[[0-9,]+\]$ ]] || { echo "ERROR: episode selection did not return a JSON list" >&2; exit 1; }
 
 # lerobot-train refuses to reuse an existing output dir unless it is resuming, so the
 # episode selection above is saved under runs/selections/ instead of inside $OUT.

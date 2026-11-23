@@ -12,6 +12,16 @@ for repo in "$BASE_POLICY" "$REFERENCE_POLICY" "$VLM_BACKBONE"; do
   if path=$(hf_local_model "$repo" "$pat" 2>/tmp/cvla_verify_err); then echo "OK   model   $repo -> $path"
   else echo "MISSING model $repo: $(tail -1 /tmp/cvla_verify_err)"; ok=0; fi
 done
+# Each SmolVLA checkpoint names its own backbone in config.json; make sure that is the one we staged.
+for repo in "$BASE_POLICY" "$REFERENCE_POLICY"; do
+  dir=$(hf_local_model "$repo" 2>/dev/null) || continue
+  vlm=$(python -c "import json,sys; print(json.load(open(sys.argv[1])).get('vlm_model_name',''))" "$dir/config.json")
+  if [[ -n "$vlm" && "$vlm" != "$VLM_BACKBONE" ]]; then
+    echo "MISSING $repo uses backbone $vlm, but staging fetched $VLM_BACKBONE"; ok=0
+  else
+    echo "OK   backbone of $repo is ${vlm:-unset}"
+  fi
+done
 if root=$(dataset_root); then
   echo "OK   dataset $DEMO_DATASET -> $root ($(du -shL "$root" 2>/dev/null | cut -f1))"
   python - "$root" <<'EOF' || ok=0

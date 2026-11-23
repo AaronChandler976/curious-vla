@@ -8,6 +8,7 @@ Example:
 """
 
 import argparse
+import contextlib
 import json
 import random
 import re
@@ -30,14 +31,17 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=None)
     args = p.parse_args()
 
-    from libero.libero import benchmark
-    from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
+    # LIBERO and LeRobot print info lines to stdout. The calling script reads stdout as the
+    # episode list, so everything except the final JSON line goes to stderr.
+    with contextlib.redirect_stdout(sys.stderr):
+        from libero.libero import benchmark
+        from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
-    suite = benchmark.get_benchmark_dict()[args.suite]()
-    task_ids = [int(t) for t in args.task_ids.split(",")]
-    wanted = {norm(suite.get_task(t).language): t for t in task_ids}
+        suite = benchmark.get_benchmark_dict()[args.suite]()
+        task_ids = [int(t) for t in args.task_ids.split(",")]
+        wanted = {norm(suite.get_task(t).language): t for t in task_ids}
 
-    meta = LeRobotDatasetMetadata(args.dataset, root=args.root)
+        meta = LeRobotDatasetMetadata(args.dataset, root=args.root)
     by_task: dict[int, list[int]] = {t: [] for t in task_ids}
     for row in meta.episodes:
         for task_text in row["tasks"]:

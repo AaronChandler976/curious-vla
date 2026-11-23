@@ -19,6 +19,7 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `select_episodes.py` | Picks N demo episodes per task (seeded) and records the choice in `runs/selections/` | called by 02 |
 | `probe_cluster.sh` | Read-only listing of partitions, GPUs, quota, modules and internet access | piped over `ssh hpc3` |
 | `verify_cache.sh` | Offline check that every model, the dataset and the LIBERO assets are cached | HPC3 login node |
+| `dry_run.sh` | Runs every job's code path tiny and on CPU, offline, in ~10 min: catches setup errors before queueing | HPC3 login node |
 | `submit_baseline.sh` | Submits 00, then 01 and the 02 sweep, which start only if 00 passed | login node |
 
 ## Which cluster
