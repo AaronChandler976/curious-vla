@@ -21,6 +21,13 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `probe_cluster.sh` | Read-only listing of partitions, GPUs, quota, modules and internet access | piped over `ssh hpc3` |
 | `verify_cache.sh` | Offline check that every model, the dataset and the LIBERO assets are cached | HPC3 login node |
 | `dry_run.sh` | Runs every job's code path tiny and on CPU, offline, in ~10 min: catches setup errors before queueing | HPC3 login node |
+| `03_collect.sbatch` | Collects random or ICM exploration data (rendering only needs a GPU), then runs the format check | GPU node, any type |
+| `collect_exploration.py` | The random and ICM (PPO on the ICM curiosity reward) explorers, recording in the demo dataset's exact format | called by 03 |
+| `check_exploration_format.py` | Compares exploration data with the demos: features, first-frame state, image orientation, action range | called by 03 and the dry run |
+| `build_mix.py` | Selected demos + the first N exploration steps, demos repeated to ~50% of frames, demo normalization stats | called by 02 |
+| `submit_exploration.sh` | Submits both collections and the mixed fine-tunes that depend on them | HPC3 login node |
+| `status.sh` / `summarize_results.py` | Queue, recent job states, last error per log, and the results table (`runs/results.csv`) | HPC3 login node |
+| `cleanup_run.sh` | Keeps only the final and 10k-step weights of a finished run | called by 02 |
 | `submit_baseline.sh` | Submits 00, then 01 and the 02 sweep, which start only if 00 passed | login node |
 
 ## Which cluster

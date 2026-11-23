@@ -4,7 +4,9 @@
 #   ssh hpc3 'cd ~/curious-vla && bash hpc/dry_run.sh'
 # Steps: cache check, episode selection, a 5-step rollout of the reference policy, 2 training
 # steps from smolvla_base, a check that the checkpoint's features match the official LIBERO
-# checkpoint's, and a 5-step rollout of that checkpoint.
+# checkpoint's, and a 5-step rollout of that checkpoint. Then the exploration path: tiny random
+# and ICM collections, the format check, the mixed dataset and 2 training steps on it.
+# ONLY_EXPLORATION=1 skips the policy steps 3-5 once they have passed.
 # Logs go to runs/dryrun/. On a failure it prints the last 80 lines of that step's log.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -48,6 +50,7 @@ select_eps() {
 step 2-select-episodes select_eps
 EPISODES=$(cat "$LOG/episodes.txt")
 
+if [[ "${ONLY_EXPLORATION:-0}" != "1" ]]; then
 step 3-eval-reference lerobot-eval \
   --policy.path="$REF_DIR" --policy.device=cpu \
   --env.type=libero --env.task="$LIBERO_SUITE" --env.task_ids="[$TASK0]" --env.episode_length=5 \
@@ -80,4 +83,24 @@ step 5-eval-finetuned lerobot-eval \
   --eval.n_episodes=1 --eval.batch_size=1 --output_dir="$LOG/eval_finetuned"
 
 rm -rf "$LOG/train/checkpoints"         # ~2 GB, and /home is nearly full
+fi  # ONLY_EXPLORATION=1 skips steps 3-5, which have already passed
+
+# Exploration conditions: tiny collections (2 episodes of 30 steps each), the format check
+# against the demos, building the mixed dataset, and 2 training steps on it.
+for m in random icm; do
+  step 6-collect-$m python hpc/collect_exploration.py --method $m --suite "$LIBERO_SUITE" \
+    --task-ids "$LIBERO_TASK_IDS" --steps 60 --episode-len 30 --rollout 4 \
+    --demo-root "$DATA_ROOT" --out "$LOG/exploration_$m"
+done
+step 7-format-check python hpc/check_exploration_format.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
+  --explore-root "$LOG/exploration_icm" --suite "$LIBERO_SUITE" --task-ids "$LIBERO_TASK_IDS"
+sed "s/^/    /" "$LOG/7-format-check.log" | grep -v -i warn
+step 8-build-mix python hpc/build_mix.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
+  --episodes "$EPISODES" --explore-root "$LOG/exploration_icm" --budget 60 --out "$LOG/mix"
+step 9-train-mix-2-steps lerobot-train \
+  --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cpu \
+  --dataset.repo_id=local/mix --dataset.root="$LOG/mix" \
+  --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
+  --output_dir="$LOG/train_mix" --job_name=dryrun_mix
+rm -rf "$LOG/train_mix/checkpoints" "$LOG/mix"
 echo "DRY RUN PASSED"
