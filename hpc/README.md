@@ -27,6 +27,7 @@ Submit from **HPC3** (`ssh hpc3`, login node g17). The `hpc` and `hpc3` aliases 
 - **GPU partitions:** `gpuqs` (max 2 days), `gpuqm` (7 days) and `gpuql` (14 days). All three cover the same nodes: 4 A100 nodes (cs001-cs004), 3 H100 nodes (g16, g18, g19) and P100 nodes, which are too old for current PyTorch. The jobs request `gpuqs` with `--gres=gpu:a100:1`. Naming the type keeps you off the P100s. Change it in `config.sh`. If the A100 queue is long, use `SLURM_GRES=gpu:h100:1`, or try the NSF H100 queue with `SLURM_PARTITION=nsfq SLURM_GRES=gpu:h100:1 bash hpc/submit_baseline.sh` (13 H100 nodes, g20-g32, max 24 h per job and 6 nodes per user).
 - **No internet** on g17, so `git clone`, `pip` and Hugging Face downloads fail there. Everything is staged from the desktop, and jobs run with `HF_HUB_OFFLINE=1`.
 - **No conda or CUDA modules,** but Apptainer is installed. The env is a conda-pack tarball that brings its own Python and CUDA 12.6 runtime. The driver is 560.35 (CUDA 12.6), which is why torch is the cu126 build.
+- **/scratch is wiped 21 days into each semester,** so everything lives in home instead.
 - **Shared /home is 96% full** (5.4 TB free cluster-wide, no per-user quota shown). Delete old checkpoints in `runs/` when you no longer need them.
 
 ## Steps
@@ -34,6 +35,7 @@ Submit from **HPC3** (`ssh hpc3`, login node g17). The `hpc` and `hpc3` aliases 
 ```bash
 # 1. On the desktop, VPN on (network and CPU only, so it can run while the GPU is busy):
 git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
+#   (already have ~/curious-vla?  cd ~/curious-vla && git fetch origin && git switch hpc-scripts)
 cd ~/curious-vla && bash hpc/stage_from_desktop.sh
 
 # 2. On HPC3:

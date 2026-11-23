@@ -2,7 +2,10 @@
 # HPC3 (g17) has no internet, so everything is downloaded on the desktop and copied over.
 # Run this ON THE UBUNTU DESKTOP, from a clone of this branch, with the SJSU VPN on:
 #   git clone -b hpc-scripts https://github.com/AaronChandler976/curious-vla.git ~/curious-vla
+#   (or, if ~/curious-vla already exists:  cd ~/curious-vla && git fetch origin && git switch hpc-scripts)
 #   cd ~/curious-vla && bash hpc/stage_from_desktop.sh
+# Staging goes to ~/cvla-stage on the desktop and to your home on HPC3. Don't move it to /scratch
+# on HPC3: files there are deleted 21 days into each semester.
 # It uses the network and CPU only, not the GPU, so it can run while the GPU is busy.
 # Safe to re-run: finished steps are skipped and rsync only sends what changed.
 #
@@ -28,14 +31,16 @@ export HF_LEROBOT_HOME="$HF_HOME/lerobot"
 LIBERO_ASSETS="$STAGE/libero-assets"
 mkdir -p "$STAGE"
 
+# Every conda call uses only conda-forge (--override-channels). That avoids the Anaconda
+# channels' Terms of Service prompt, which stops non-interactive installs.
 echo "== 1/4 Build and pack the env"
 if [[ ! -x "$MC/bin/conda" ]]; then
-  curl -fsSL -o "$STAGE/miniconda.sh" https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  curl -fsSL -o "$STAGE/miniconda.sh" https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
   bash "$STAGE/miniconda.sh" -b -p "$MC" && rm -f "$STAGE/miniconda.sh"
 fi
 if [[ ! -f "$TARBALL" ]]; then
-  "$MC/bin/conda" install -y -n base -c conda-forge conda-pack
-  [[ -d "$ENV_PREFIX" ]] || "$MC/bin/conda" create -y -p "$ENV_PREFIX" -c conda-forge \
+  "$MC/bin/conda" install -y -n base --override-channels -c conda-forge conda-pack
+  [[ -d "$ENV_PREFIX" ]] || "$MC/bin/conda" create -y -p "$ENV_PREFIX" --override-channels -c conda-forge \
       "python=$PYTHON_VERSION" "ffmpeg>=6,<8" cmake
   "$ENV_PREFIX/bin/pip" install --upgrade pip
   "$ENV_PREFIX/bin/pip" install "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION" --index-url "$TORCH_INDEX_URL"

@@ -12,7 +12,7 @@ export HPC_OFFLINE=0 HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0
 echo "== 1/5 Miniconda in $CONDA_ROOT"
 if [[ ! -x "$CONDA_ROOT/bin/conda" ]]; then
   installer="$HOME/miniconda-installer.sh"
-  curl -fsSL -o "$installer" https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  curl -fsSL -o "$installer" https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
   bash "$installer" -b -p "$CONDA_ROOT"
   rm -f "$installer"
 fi
@@ -20,11 +20,11 @@ source "$CONDA_ROOT/etc/profile.d/conda.sh"
 
 echo "== 2/5 conda env $CONDA_ENV (Python $PYTHON_VERSION)"
 if ! conda env list | awk '{print $1}' | grep -qx "$CONDA_ENV"; then
-  conda create -y -n "$CONDA_ENV" "python=$PYTHON_VERSION"
+  conda create -y -n "$CONDA_ENV" --override-channels -c conda-forge "python=$PYTHON_VERSION"
 fi
 conda activate "$CONDA_ENV"
 # ffmpeg is needed to decode the dataset videos; cmake is needed to build some LIBERO deps.
-conda install -y -c conda-forge "ffmpeg>=6,<8" cmake
+conda install -y --override-channels -c conda-forge "ffmpeg>=6,<8" cmake
 
 echo "== 3/5 lerobot[smolvla,libero]==$LEROBOT_VERSION"
 # The torch wheels from PyPI bundle their own CUDA runtime, so the cluster's old CUDA modules
