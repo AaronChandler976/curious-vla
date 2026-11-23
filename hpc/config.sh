@@ -144,8 +144,6 @@ patch_env() {
   fi
 }
 
-# lerobot/smolvla_base was pretrained with cameras named camera1/camera2/camera3, while the
-# LIBERO dataset and env use image (agent view) and image2 (wrist). This maps one to the other
-# for fine-tuning and for evaluating our fine-tunes. Not yet verified on a real run: if
-# training stops with a missing-feature error, this map is the first thing to check.
-export FINETUNE_RENAME_MAP='{"observation.images.image": "observation.images.camera1", "observation.images.image2": "observation.images.camera2"}'
+# No camera rename map: make_base_policy.py gives the starting policy the same feature names
+# and shapes as HuggingFaceVLA/smolvla_libero (cameras image/image2, 8-dim state, 7-dim
+# action), which are also the dataset's and the LIBERO env's names.

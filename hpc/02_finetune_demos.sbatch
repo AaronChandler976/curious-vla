@@ -26,7 +26,10 @@ RUN="demos_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${N_DEMOS}_s${SEED}"
 OUT="$RUNS_DIR/$RUN"
 
 DATA_ROOT=$(dataset_root)
-BASE_DIR=$(hf_local_model "$BASE_POLICY")
+# smolvla_base with LIBERO's features in its config (see make_base_policy.py).
+BASE_DIR="$RUNS_DIR/base_policy/$RUN"
+python hpc/make_base_policy.py "$(hf_local_model "$BASE_POLICY")" \
+  "$(hf_local_model "$REFERENCE_POLICY")" "$DATA_ROOT" "$BASE_DIR"
 echo "Dataset: $DATA_ROOT"
 echo "Base policy: $BASE_DIR"
 
@@ -47,7 +50,6 @@ lerobot-train \
   --policy.path="$BASE_DIR" \
   --policy.push_to_hub=false \
   --policy.device=cuda \
-  --rename_map="$FINETUNE_RENAME_MAP" \
   --dataset.repo_id="$DEMO_DATASET" \
   --dataset.root="$DATA_ROOT" \
   --dataset.episodes="$EPISODES" \
@@ -63,7 +65,6 @@ fi
 
 lerobot-eval \
   --policy.path="$OUT/checkpoints/last/pretrained_model" \
-  --rename_map="$FINETUNE_RENAME_MAP" \
   --env.type=libero \
   --env.task="$LIBERO_SUITE" \
   --env.task_ids="[$LIBERO_TASK_IDS]" \

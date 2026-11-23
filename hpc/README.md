@@ -16,6 +16,7 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `00_check.sbatch` | GPU, PyTorch-on-GPU and headless LIBERO render check (~10 min) | GPU node |
 | `01_eval_reference.sbatch` | `lerobot-eval` of `HuggingFaceVLA/smolvla_libero` on our tasks | GPU node |
 | `02_finetune_demos.sbatch` | Fine-tunes `lerobot/smolvla_base` on N demos per task, then evaluates it; resumes after a timeout | GPU node |
+| `make_base_policy.py` | Copies `smolvla_base` with the official LIBERO checkpoint's feature names and shapes, checked against the dataset | called by 02 and the dry run |
 | `select_episodes.py` | Picks N demo episodes per task (seeded) and records the choice in `runs/selections/` | called by 02 |
 | `probe_cluster.sh` | Read-only listing of partitions, GPUs, quota, modules and internet access | piped over `ssh hpc3` |
 | `verify_cache.sh` | Offline check that every model, the dataset and the LIBERO assets are cached | HPC3 login node |
@@ -56,5 +57,5 @@ Results go to `runs/` (git-ignored). Each eval writes `eval_info.json` with the 
 
 - **torch 2.9.1+cu126 on the compute nodes.** The A100 node's driver may differ from g17's. `00_check` prints both, and every other job waits for it to pass.
 - **Headless rendering.** If `00_check` fails at the render step, set `MUJOCO_GL=osmesa` in `config.sh`. It is slower, but it needs no GPU display driver.
-- **Camera key mapping.** `FINETUNE_RENAME_MAP` in `config.sh` maps the LIBERO camera names onto the ones SmolVLA was pretrained with. It has not been tested on a real run yet.
+- **Feature format.** Fine-tunes start from a copy of `smolvla_base` whose config has the official LIBERO checkpoint's features: cameras `image`/`image2`, an 8-dim state and a 7-dim action. That copy is made by `make_base_policy.py`, which also checks the features against the dataset. Without it, training silently kept smolvla_base's 6-dim state, which the dry run caught. `dry_run.sh` checks that the trained checkpoint's features match the official checkpoint's.
 - **Offline dataset loading.** If a job fails on a Hugging Face download, the cache copy is incomplete. Re-run `stage_from_desktop.sh`.

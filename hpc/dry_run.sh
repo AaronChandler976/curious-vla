@@ -3,7 +3,8 @@
 # It catches setup errors in about 10 minutes instead of one queued GPU job at a time.
 #   ssh hpc3 'cd ~/curious-vla && bash hpc/dry_run.sh'
 # Steps: cache check, episode selection, a 5-step rollout of the reference policy, 2 training
-# steps from smolvla_base with our camera rename map, and a 5-step rollout of that checkpoint.
+# steps from smolvla_base, a check that the checkpoint's features match the official LIBERO
+# checkpoint's, and a 5-step rollout of that checkpoint.
 # Logs go to runs/dryrun/. On a failure it prints the last 80 lines of that step's log.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -34,8 +35,9 @@ TASK0="${LIBERO_TASK_IDS%%,*}"
 step 1-cache bash hpc/verify_cache.sh
 
 DATA_ROOT=$(dataset_root) || exit 1
-BASE_DIR=$(hf_local_model "$BASE_POLICY") || exit 1
 REF_DIR=$(hf_local_model "$REFERENCE_POLICY") || exit 1
+BASE_DIR="$LOG/base_policy"
+step 1b-base-policy python hpc/make_base_policy.py "$(hf_local_model "$BASE_POLICY")" "$REF_DIR" "$DATA_ROOT" "$BASE_DIR"
 
 select_eps() {
   python hpc/select_episodes.py --dataset "$DEMO_DATASET" --root "$DATA_ROOT" --suite "$LIBERO_SUITE" \
@@ -53,14 +55,27 @@ step 3-eval-reference lerobot-eval \
 
 step 4-train-2-steps lerobot-train \
   --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cpu \
-  --rename_map="$FINETUNE_RENAME_MAP" \
   --dataset.repo_id="$DEMO_DATASET" --dataset.root="$DATA_ROOT" --dataset.episodes="$EPISODES" \
   --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
   --output_dir="$LOG/train" --job_name=dryrun
 
+check_features() {
+  python - "$LOG/train/checkpoints/last/pretrained_model/config.json" "$REF_DIR/config.json" <<'PYEOF'
+import json, sys
+def feats(p):
+    c = json.load(open(p))
+    return {k: (v["type"], list(v["shape"])) for k, v in {**c["input_features"], **c["output_features"]}.items()}
+got, want = feats(sys.argv[1]), feats(sys.argv[2])
+for k in sorted(set(got) | set(want)):
+    print(f"{'OK ' if got.get(k) == want.get(k) else 'BAD'} {k}: trained {got.get(k)}  official {want.get(k)}")
+sys.exit(0 if got == want else "trained checkpoint features differ from the official LIBERO checkpoint")
+PYEOF
+}
+step 4b-check-features check_features
+sed "s/^/    /" "$LOG/4b-check-features.log"
+
 step 5-eval-finetuned lerobot-eval \
   --policy.path="$LOG/train/checkpoints/last/pretrained_model" --policy.device=cpu \
-  --rename_map="$FINETUNE_RENAME_MAP" \
   --env.type=libero --env.task="$LIBERO_SUITE" --env.task_ids="[$TASK0]" --env.episode_length=5 \
   --eval.n_episodes=1 --eval.batch_size=1 --output_dir="$LOG/eval_finetuned"
 
