@@ -23,6 +23,7 @@ Per-episode diagnostics (env steps so far, how far objects moved) go to OUT/expl
 """
 
 import argparse
+import faulthandler
 import json
 import shutil
 import sys
@@ -249,6 +250,11 @@ def main() -> None:
     p.add_argument("--fake-env", action="store_true", help="test without LIBERO")
     args = p.parse_args()
 
+    # The explorer networks are tiny: one thread avoids OpenMP thread contention inside a Slurm
+    # CPU allocation. Every 5 minutes, dump all Python stacks to the log so a stall shows where.
+    torch.set_num_threads(1)
+    faulthandler.dump_traceback_later(300, repeat=True, file=sys.stderr)
+
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     info = json.loads((Path(args.demo_root) / "meta" / "info.json").read_text())
@@ -282,6 +288,8 @@ def main() -> None:
         ep_len = min(args.episode_len, args.steps - steps)
         r_sum, max_obj_move, successes = 0.0, 0.0, 0
         for t in range(ep_len):
+            if t % 50 == 0:
+                print(f"[{args.method}]   step {t}/{ep_len} of episode {ep + 1} ({time.time() - t0:.0f} s)", flush=True)
             if t % args.hold == 0:
                 action, extra = explorer.act(obs)
                 start_obs = obs

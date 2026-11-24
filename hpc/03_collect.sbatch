@@ -17,6 +17,7 @@
 set -euo pipefail
 source hpc/config.sh
 activate_env
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random or icm}"
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"
