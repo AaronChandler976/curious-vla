@@ -98,6 +98,8 @@ rm -rf "$LOG/train/checkpoints"         # ~2 GB, and /home is nearly full
 
 # Exploration conditions: tiny collections (2 episodes of 30 steps each), the format check
 # against the demos, building the mixed dataset, and 2 training steps on it.
+step 5b-pick-egl-device python hpc/pick_egl_device.py
+show 5b-pick-egl-device
 for m in random icm; do
   step 6-collect-$m python hpc/collect_exploration.py --method $m --suite "$LIBERO_SUITE" \
     --task-ids "$LIBERO_TASK_IDS" --steps 60 --episode-len 30 --rollout 4 \

@@ -12,12 +12,16 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=12:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=runs/logs/%x-%j.out
 set -euo pipefail
 source hpc/config.sh
 activate_env
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+# Render on a GPU EGL device that actually works (see pick_egl_device.py). robosuite asserts that
+# MUJOCO_EGL_DEVICE_ID appears in CUDA_VISIBLE_DEVICES; the collector itself never uses CUDA.
+MUJOCO_EGL_DEVICE_ID=$(python hpc/pick_egl_device.py)
+export MUJOCO_EGL_DEVICE_ID CUDA_VISIBLE_DEVICES=$MUJOCO_EGL_DEVICE_ID
 
 EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random or icm}"
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"

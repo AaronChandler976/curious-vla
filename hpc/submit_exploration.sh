@@ -16,7 +16,7 @@ BUDGETS="${BUDGETS:-5000 20000}"
 DEMO_BUDGETS="${DEMO_BUDGETS:-10 25}"
 SEEDS="${SEEDS:-0}"
 EXTRA_SEEDS="${EXTRA_SEEDS-1 2}"          # at the first demo budget and the largest exploration budget
-COLLECT_GRES="${COLLECT_GRES:-gpu:1}"          # any GPU type: it is only used for rendering
+COLLECT_GRES="${COLLECT_GRES:-$SLURM_GRES}"   # the same GPU type the fine-tunes (and their evals) use
 max_budget=$(echo $BUDGETS | tr ' ' '\n' | sort -n | tail -1)
 first_n=$(echo $DEMO_BUDGETS | awk '{print $1}')
 GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES")
