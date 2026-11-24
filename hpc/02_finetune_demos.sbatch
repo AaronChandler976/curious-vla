@@ -101,16 +101,25 @@ run_gpu "$SELF" lerobot-train \
   ${EXTRA_TRAIN_ARGS:-}
 fi
 
-run_gpu "$SELF" lerobot-eval \
-  --policy.path="$OUT/checkpoints/last/pretrained_model" \
-  --env.type=libero \
-  --env.task="$LIBERO_SUITE" \
-  --env.task_ids="[$LIBERO_TASK_IDS]" \
-  --eval.n_episodes="$N_EVAL_EPISODES" \
-  --eval.batch_size=5 \
-  --policy.device=cuda \
-  --seed="$SEED" \
+EVAL_ARGS=(
+  --policy.path="$OUT/checkpoints/last/pretrained_model"
+  --env.type=libero
+  --env.task="$LIBERO_SUITE"
+  --env.task_ids="[$LIBERO_TASK_IDS]"
+  --eval.n_episodes="$N_EVAL_EPISODES"
+  --eval.batch_size=5
+  --policy.device=cuda
+  --seed="$SEED"
   --output_dir="$OUT/eval"
+)
+# If a simulator worker process dies, try once more with the simulators in the main process (same
+# episodes and seeds). If that fails too, run_gpu resubmits the job to another node, where it
+# only evaluates.
+if ! lerobot-eval "${EVAL_ARGS[@]}"; then
+  echo "lerobot-eval failed; retrying with --eval.use_async_envs=false"
+  rm -rf "$OUT/eval"
+  run_gpu "$SELF" lerobot-eval "${EVAL_ARGS[@]}" --eval.use_async_envs=false
+fi
 
 # /home is nearly full: keep only the final weights (and the 10k-step weights, for an
 # overfitting check), and drop optimizer states and the training dataset.

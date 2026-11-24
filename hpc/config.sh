@@ -23,6 +23,9 @@ export PACKED_ENV_DIR="${PACKED_ENV_DIR:-$HOME/cvla-env}"
 export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs,nsfq}"
 export SLURM_GRES="${SLURM_GRES:-gpu:1}"
 export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15]}"
+# Collections also avoid cs002: two of its collections segfaulted inside robosuite and one rendered
+# on a GPU the job did not own (Nov 24 2026).
+export COLLECT_EXCLUDE="${COLLECT_EXCLUDE-${SLURM_EXCLUDE:+$SLURM_EXCLUDE,}cs002}"
 # Submit scripts pass all three on the sbatch line. Jobs inherit them from the submitting shell,
 # so a job that gpu_resubmit sends elsewhere asks for the same partitions and GPU types.
 
@@ -160,7 +163,10 @@ patch_env() {
 # the node and the GPU's compute mode, then checks that CUDA works (3 tries, 60 s apart). If it
 # never does, or a step run through run_gpu fails with that error, gpu_resubmit submits the same
 # job again with this node excluded (up to GPU_MAX_RETRIES times) and this job exits.
-GPU_FAIL_PATTERN='cudaErrorDevicesUnavailable|busy or unavailable|cudaErrorNoDevice|no CUDA-capable device'
+# The last alternative is lerobot-eval's simulator worker dying (seen once on nsfq node g25 on Nov
+# 24 2026, at the first step of a rollout, while the same eval ran fine on g31): a node whose
+# rendering is broken is treated like one whose GPU is busy.
+GPU_FAIL_PATTERN='cudaErrorDevicesUnavailable|busy or unavailable|cudaErrorNoDevice|no CUDA-capable device|Environment process exited with code'
 
 gpu_report() {
   echo "=== GPU report: node ${SLURMD_NODENAME:-$(hostname -s)}, job ${SLURM_JOB_ID:-none}, CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}, retry ${GPU_RETRIES:-0}, excluded: ${GPU_EXCLUDE:-none}"

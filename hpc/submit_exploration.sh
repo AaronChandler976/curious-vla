@@ -22,6 +22,7 @@ SEEDS="${SEEDS:-0 1 2}"
 EXPLORE_SEEDS="${EXPLORE_SEEDS:-0}"
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"
 GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${SLURM_EXCLUDE:+--exclude="$SLURM_EXCLUDE"})
+CGPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${COLLECT_EXCLUDE:+--exclude="$COLLECT_EXCLUDE"})
 suffix="${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
 queued_id() { squeue -u "$USER" -h -n "$1" -o %i | head -n 1; }
 
@@ -34,7 +35,7 @@ for m in $METHODS; do
       c=$(queued_id "$cname")
       if [[ -z "$c" && "${SKIP_COLLECT:-0}" != "1" ]]; then
         c=$(EXPLORE_METHOD=$m EXPLORE_SEED=$es COLLECT_STEPS=$COLLECT_STEPS sbatch --parsable --job-name="$cname" \
-            "${GPU[@]}" hpc/03_collect.sbatch)
+            "${CGPU[@]}" hpc/03_collect.sbatch)
         echo "$cname ($COLLECT_STEPS steps): $c"
       elif [[ -n "$c" ]]; then
         echo "$cname: already queued as $c"

@@ -23,6 +23,7 @@ MAX_FAILS="${MAX_FAILS:-3}"
 PLAN="${PLAN:-hpc/plan.txt}"
 suffix="${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
 GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${SLURM_EXCLUDE:+--exclude="$SLURM_EXCLUDE"})
+CGPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${COLLECT_EXCLUDE:+--exclude="$COLLECT_EXCLUDE"})
 SINCE=2026-11-24T14:00   # failures before the GPU-busy fix are not counted
 
 # Cancel jobs stuck behind a failed dependency.
@@ -58,7 +59,7 @@ ensure_collect() {  # ensure_collect METHOD ESEED: sets CID to the collection jo
   if [[ -z "$c" ]]; then
     if (( $(n_fails "collect-$key") >= MAX_FAILS )); then stuck+=("collect-$key"); return 1; fi
     c=$(EXPLORE_METHOD=$m EXPLORE_SEED=$es COLLECT_STEPS=20000 sbatch --parsable --job-name="collect-$key" \
-        "${GPU[@]}" hpc/03_collect.sbatch) || return 1
+        "${CGPU[@]}" hpc/03_collect.sbatch) || return 1
     echo "$(date '+%F %T') submitted collect-$key as $c"
   fi
   COLLECT_DEP[$key]=$c
