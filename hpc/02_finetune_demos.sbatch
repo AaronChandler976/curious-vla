@@ -20,6 +20,8 @@
 set -euo pipefail
 source hpc/config.sh
 activate_env
+SELF=hpc/02_finetune_demos.sbatch   # Slurm runs a copy of this file, so name it for resubmits
+gpu_preflight "$SELF"
 
 N_DEMOS="${N_DEMOS:-10}"
 SEED="${SEED:-0}"
@@ -67,12 +69,16 @@ DATA_ARGS=(--dataset.repo_id="local/$RUN" --dataset.root="$TRAIN_DATA")
 # lerobot-train refuses to reuse an existing output dir unless it is resuming, so the
 # episode selection above is saved under runs/selections/ instead of inside $OUT.
 # Training-time sim eval is off (env_eval_freq=0); we evaluate the final checkpoint below.
+if [[ -d "$OUT" && ! -d "$OUT/checkpoints/last" ]]; then
+  # A job that died before its first checkpoint: lerobot-train would refuse this dir.
+  mv "$OUT" "$OUT.failed-$(date +%Y%m%d-%H%M%S)"; echo "Moved a partial $OUT aside"
+fi
 if [[ -d "$OUT/checkpoints/last" ]]; then
   # A previous job hit the time limit: resume from its last checkpoint with its saved config.
   echo "Resuming $OUT"
-  lerobot-train --resume=true --config_path="$OUT/checkpoints/last/pretrained_model/train_config.json"
+  run_gpu "$SELF" lerobot-train --resume=true --config_path="$OUT/checkpoints/last/pretrained_model/train_config.json"
 else
-lerobot-train \
+run_gpu "$SELF" lerobot-train \
   --policy.path="$BASE_DIR" \
   --policy.push_to_hub=false \
   --policy.device=cuda \
@@ -87,7 +93,7 @@ lerobot-train \
   ${EXTRA_TRAIN_ARGS:-}
 fi
 
-lerobot-eval \
+run_gpu "$SELF" lerobot-eval \
   --policy.path="$OUT/checkpoints/last/pretrained_model" \
   --env.type=libero \
   --env.task="$LIBERO_SUITE" \

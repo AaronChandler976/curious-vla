@@ -147,3 +147,72 @@ patch_env() {
 # No camera rename map: make_base_policy.py gives the starting policy the same feature names
 # and shapes as HuggingFaceVLA/smolvla_libero (cameras image/image2, 8-dim state, 7-dim
 # action), which are also the dataset's and the LIBERO env's names.
+
+# ---- GPU checks for the training jobs ----
+# Some jobs died ~5 min in with cudaErrorDevicesUnavailable ("all CUDA-capable devices are busy or
+# unavailable"): the GPU Slurm gave us was in use by another process, or broken. gpu_preflight logs
+# the node and the GPU's compute mode, then checks that CUDA works (3 tries, 60 s apart). If it
+# never does, or a step run through run_gpu fails with that error, gpu_resubmit submits the same
+# job again with this node excluded (up to GPU_MAX_RETRIES times) and this job exits.
+GPU_FAIL_PATTERN='cudaErrorDevicesUnavailable|busy or unavailable|cudaErrorNoDevice|no CUDA-capable device'
+
+gpu_report() {
+  echo "=== GPU report: node ${SLURMD_NODENAME:-$(hostname -s)}, job ${SLURM_JOB_ID:-none}, CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}, retry ${GPU_RETRIES:-0}, excluded: ${GPU_EXCLUDE:-none}"
+  nvidia-smi --query-gpu=index,name,compute_mode,memory.used,utilization.gpu --format=csv 2>&1 || true
+  echo "processes on the GPU:"
+  nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>&1 || true
+}
+
+gpu_usable() {
+  python - <<'PYEOF'
+import sys, torch
+try:
+    x = torch.ones(1024, 1024, device="cuda"); (x @ x).sum().item(); torch.cuda.synchronize()
+    print(f"CUDA ok: {torch.cuda.get_device_name(0)}")
+except Exception as e:
+    sys.exit(f"CUDA not usable: {e}")
+PYEOF
+}
+
+gpu_resubmit() {  # gpu_resubmit SBATCH_SCRIPT: resubmit this job elsewhere, then exit
+  local script=$1 node=${SLURMD_NODENAME:-$(hostname -s)} tries=${GPU_RETRIES:-0} max=${GPU_MAX_RETRIES:-3}
+  local excl="${GPU_EXCLUDE:+$GPU_EXCLUDE,}$node" part=${SLURM_JOB_PARTITION:-$SLURM_PARTITION} gres=$SLURM_GRES j
+  if (( tries >= max )); then
+    echo "GPU error: unusable GPU on $((tries + 1)) nodes ($excl); not resubmitting again" >&2; exit 1
+  fi
+  # The new job must not inherit this job's SLURM_* settings or its GPU id.
+  local unset_args=(-u CUDA_VISIBLE_DEVICES) v
+  for v in $(compgen -e | grep '^SLURM' | grep -v '^SLURM_CONF$'); do unset_args+=(-u "$v"); done
+  if j=$(env "${unset_args[@]}" GPU_RETRIES=$((tries + 1)) GPU_EXCLUDE="$excl" SLURM_GRES="$gres" \
+         sbatch --parsable --job-name="${SLURM_JOB_NAME:-cvla-retry}" --partition="$part" --gres="$gres" \
+         --exclude="$excl" "$script"); then
+    echo "GPU error: unusable GPU on $node; resubmitted as job $j (excluding $excl)" >&2
+  else
+    echo "GPU error: unusable GPU on $node, and the resubmit failed; rerun submit_exploration.sh" >&2
+  fi
+  exit 1
+}
+
+gpu_preflight() {  # gpu_preflight SBATCH_SCRIPT
+  gpu_report
+  local i
+  for i in 1 2 3; do
+    gpu_usable && return 0
+    (( i < 3 )) && { echo "retrying in 60 s"; sleep 60; }
+  done
+  gpu_report
+  gpu_resubmit "$1"
+}
+
+run_gpu() {  # run_gpu SBATCH_SCRIPT CMD...: run CMD; on a GPU-unavailable error, resubmit
+  local script=$1; shift
+  local log rc
+  log=$(mktemp)
+  set +e
+  "$@" 2>&1 | tee "$log"
+  rc=${PIPESTATUS[0]}
+  set -e
+  if (( rc != 0 )) && grep -qE "$GPU_FAIL_PATTERN" "$log"; then rm -f "$log"; gpu_report; gpu_resubmit "$script"; fi
+  rm -f "$log"
+  return "$rc"
+}
