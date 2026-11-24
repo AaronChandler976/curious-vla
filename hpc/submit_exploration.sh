@@ -6,6 +6,9 @@
 # seed 0; plus seeds 1 and 2 at 10 demos and 20000 steps. Override with e.g.
 #   METHODS=icm BUDGETS=20000 DEMO_BUDGETS=10 SEEDS="0 1 2" EXTRA_SEEDS="" bash hpc/submit_exploration.sh
 # SKIP_COLLECT=1 reuses exploration data that is already collected.
+# Runs that already have an eval, or are already in the queue, are skipped, so re-running only
+# submits what is missing. Example: rerun failures and add seeds 1-2 at 5k steps and 10 demos:
+#   SKIP_COLLECT=1 BUDGETS=5000 bash hpc/submit_exploration.sh
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 source hpc/config.sh
@@ -33,8 +36,15 @@ for m in $METHODS; do
   submit() {  # submit BUDGET N SEED
     local run="mix-$m-$1_${suffix}_n$2_s$3"
     if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then echo "  $run: already done"; return; fi
+    if squeue -u "$USER" -h -n "$run" -o %i | grep -q .; then echo "  $run: already queued or running"; return; fi
+    # A job that died before its first checkpoint can leave an output dir that lerobot-train
+    # refuses to reuse. Move it aside (nothing is deleted). With checkpoints/last the job resumes.
+    if [[ -d "$RUNS_DIR/$run" && ! -d "$RUNS_DIR/$run/checkpoints/last" ]]; then
+      mv "$RUNS_DIR/$run" "$RUNS_DIR/$run.failed-$(date +%Y%m%d-%H%M%S)"
+      echo "  $run: moved the partial output dir aside"
+    fi
     local j
-    j=$(EXPLORE_METHOD=$m EXPLORE_STEPS=$1 N_DEMOS=$2 SEED=$3 sbatch --parsable --job-name="$run" "${GPU[@]}" "${DEP[@]}" \
+    j=$(EXPLORE_METHOD=$m EXPLORE_STEPS=$1 N_DEMOS=$2 SEED=$3 sbatch --parsable --job-name="$run" "${GPU[@]}" ${DEP[@]+"${DEP[@]}"} \
         hpc/02_finetune_demos.sbatch)
     echo "  $run: $j"
   }
