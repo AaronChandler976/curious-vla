@@ -3,7 +3,7 @@
 #   ssh hpc3 'cd ~/curious-vla && bash hpc/restart_collect.sh icm'
 # Prints why the previous collection stopped, submits a new one, updates the dependencies of the
 # pending mix-<method>-* jobs (found by name, no job ids to type), then follows the new job for
-# up to 15 minutes after it starts and prints the GPU it picked and its progress.
+# up to 30 minutes after it starts and prints the GPU it picked and its progress.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 source hpc/config.sh
@@ -34,11 +34,11 @@ for i in $(seq 1 40); do   # up to 20 minutes in the queue
   sleep 30
 done
 [[ -f "$log" ]] || { echo "still queued after 20 min; check later with: grep -E 'EGL|episode' $log"; exit 0; }
-for i in $(seq 1 30); do   # up to 15 minutes
+for i in $(seq 1 60); do   # up to 30 minutes (the render probe alone can take ~15)
   grep -q -E "^\[$m\] episode|Timeout|Error|Traceback|no NVIDIA" "$log" 2>/dev/null && [[ $i -gt 2 ]] && break
   [[ -z "$(squeue -h -j "$new" 2>/dev/null)" ]] && break
   sleep 30
 done
 echo "=== $log"
-grep -E "CUDA_VISIBLE|EGL device|using EGL|^\[$m\] episode|Timeout|Error|Traceback|no NVIDIA|cannot list" "$log" | tail -n 15
+grep -E "CUDA_VISIBLE|EGL device|default:|OSMesa|Rendering with|^\[$m\] episode|Timeout|Error|Traceback|no NVIDIA|cannot list" "$log" | tail -n 15
 echo "=== state: $(sacct -j "$new" -X -n -o State,Elapsed | head -1)"

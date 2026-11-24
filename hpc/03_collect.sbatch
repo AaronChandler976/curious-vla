@@ -18,10 +18,11 @@ set -euo pipefail
 source hpc/config.sh
 activate_env
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-# Render on a GPU EGL device that actually works (see pick_egl_device.py). robosuite asserts that
-# MUJOCO_EGL_DEVICE_ID appears in CUDA_VISIBLE_DEVICES; the collector itself never uses CUDA.
-MUJOCO_EGL_DEVICE_ID=$(python hpc/pick_egl_device.py)
-export MUJOCO_EGL_DEVICE_ID CUDA_VISIBLE_DEVICES=$MUJOCO_EGL_DEVICE_ID
+# Find a rendering setup that works in this job (see pick_egl_device.py): a short real
+# collection on the default EGL device, then each EGL device, then OSMesa.
+RENDER_ENV=$(python hpc/pick_egl_device.py --demo-root "$(dataset_root)" --suite "$LIBERO_SUITE" --task-ids "$LIBERO_TASK_IDS")
+echo "Rendering with: $RENDER_ENV"
+export $RENDER_ENV
 
 EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random or icm}"
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"
