@@ -31,6 +31,9 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `status.sh` / `summarize_results.py` | Queue, recent job states, last error per log, and the results table (`runs/results.csv`) | HPC3 login node |
 | `cleanup_run.sh` | Keeps only the final and 10k-step weights of a finished run | called by 02 |
 | `submit_baseline.sh` | Submits 00, then 01 and the 02 sweep, which start only if 00 passed | login node |
+| `plan.txt` | The full experiment plan, one run per line; add a line to add a run | read by `autopilot.sh` |
+| `autopilot.sh` | Submits every planned run that is not done or queued (and the collections it needs), cancels jobs whose collection failed, stops retrying a run after 3 real failures, and refreshes `runs/results.csv` and `runs/analysis/`; idempotent | HPC3 login node, from cron every 20 min |
+| `analyze_results.py` | Mean, std and 95% CIs (seed t-interval and hierarchical bootstrap) per cell, each exploration condition vs. demos only, and the PDF figures, into `runs/analysis/` | HPC3 or desktop, with the packed env's Python |
 
 ## Which cluster
 
@@ -41,6 +44,10 @@ Submit from **HPC3** (`ssh hpc3`, login node g17). The `hpc` and `hpc3` aliases 
 - **No conda or CUDA modules,** but Apptainer is installed. The env is a conda-pack tarball that brings its own Python and CUDA 12.6 runtime. The driver is 560.35 (CUDA 12.6), which is why torch is the cu126 build.
 - **/scratch is wiped 21 days into each semester,** so everything lives in home instead.
 - **Shared /home is 96% full** (5.4 TB free cluster-wide, no per-user quota shown). Delete old checkpoints in `runs/` when you no longer need them.
+
+## Running unattended
+
+Since Nov 24, 2026 the login node's crontab runs `hpc/autopilot.sh` every 20 minutes, which keeps `hpc/plan.txt` running to completion. Its one-line status goes to `runs/logs/autopilot.log`. Jobs take any free A100 or H100 in `gpuqs` or `nsfq` (see `config.sh`). A job that finds its GPU busy resubmits itself with that node excluded. Exploration runs on re-collected exploration data have names ending in `_e<collection seed>`.
 
 ## Steps
 

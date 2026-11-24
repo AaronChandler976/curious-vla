@@ -21,7 +21,7 @@ for j in $(squeue -u "$me" -h -n "collect-$m" -o %i); do echo "cancelling runnin
 sleep 5
 
 new=$(EXPLORE_METHOD=$m COLLECT_STEPS=20000 sbatch --parsable --job-name="collect-$m" \
-      --partition="$SLURM_PARTITION" --gres="$SLURM_GRES" hpc/03_collect.sbatch) || { echo "sbatch failed"; exit 1; }
+      --partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${SLURM_EXCLUDE:+--exclude="$SLURM_EXCLUDE"} hpc/03_collect.sbatch) || { echo "sbatch failed"; exit 1; }
 echo "=== new collection: $new"
 for j in $(squeue -u "$me" -h -o "%i %j" | awk -v p="^mix-$m-" '$2 ~ p {print $1}'); do
   scontrol update JobId="$j" Dependency="afterok:$new" && echo "  $j now waits for $new"

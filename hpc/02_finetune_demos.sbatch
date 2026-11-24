@@ -30,8 +30,13 @@ BATCH_SIZE="${BATCH_SIZE:-32}"
 N_EVAL_EPISODES="${N_EVAL_EPISODES:-50}"
 EXPLORE_METHOD="${EXPLORE_METHOD:-}"
 EXPLORE_STEPS="${EXPLORE_STEPS:-0}"
+# Which exploration collection to mix in: seed 0 is the original one (no suffix in any name);
+# seeds 1+ are independent re-collections, used to tell the effect of the method from that of
+# one particular draw of exploration data. Run names get _e<seed>.
+EXPLORE_SEED="${EXPLORE_SEED:-0}"
 SUFFIX="${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${N_DEMOS}_s${SEED}"
-if [[ -n "$EXPLORE_METHOD" ]]; then RUN="mix-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}"; else RUN="demos_${SUFFIX}"; fi
+ESUFFIX=""; (( EXPLORE_SEED > 0 )) && ESUFFIX="_e${EXPLORE_SEED}"
+if [[ -n "$EXPLORE_METHOD" ]]; then RUN="mix-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}${ESUFFIX}"; else RUN="demos_${SUFFIX}"; fi
 OUT="$RUNS_DIR/$RUN"
 
 DATA_ROOT=$(dataset_root)
@@ -53,7 +58,7 @@ echo "Training on episodes: $EPISODES"
 SELECTION="$RUNS_DIR/selections/$RUN.json"
 BUILD_ARGS=()
 if [[ -n "$EXPLORE_METHOD" ]]; then
-  EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
+  EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}${ESUFFIX}"
   [[ -f "$EXPLORE_ROOT/exploration_log.json" ]] || { echo "ERROR: no exploration data at $EXPLORE_ROOT; run 03_collect.sbatch first" >&2; exit 1; }
   BUILD_ARGS=(--explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS")
 fi
@@ -73,7 +78,10 @@ if [[ -d "$OUT" && ! -d "$OUT/checkpoints/last" ]]; then
   # A job that died before its first checkpoint: lerobot-train would refuse this dir.
   mv "$OUT" "$OUT.failed-$(date +%Y%m%d-%H%M%S)"; echo "Moved a partial $OUT aside"
 fi
-if [[ -d "$OUT/checkpoints/last" ]]; then
+if [[ -d "$OUT/checkpoints/$(printf %06d "$STEPS")/pretrained_model" ]]; then
+  # Training finished in an earlier job that then died (e.g. in the eval): only evaluate.
+  echo "Training already finished in $OUT; evaluating only"
+elif [[ -d "$OUT/checkpoints/last" ]]; then
   # A previous job hit the time limit: resume from its last checkpoint with its saved config.
   echo "Resuming $OUT"
   run_gpu "$SELF" lerobot-train --resume=true --config_path="$OUT/checkpoints/last/pretrained_model/train_config.json"

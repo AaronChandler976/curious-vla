@@ -26,9 +26,12 @@ export $RENDER_ENV
 
 EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random or icm}"
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"
-SEED="${SEED:-0}"
+# EXPLORE_SEED (or SEED) picks the collection's seed: its RNG and its scenes' initial states.
+# Seed 0 is the original collection; seeds 1+ write to a directory with an _e<seed> suffix.
+SEED="${EXPLORE_SEED:-${SEED:-0}}"
 DATA_ROOT=$(dataset_root)
-OUT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}"
+ESUFFIX=""; (( SEED > 0 )) && ESUFFIX="_e${SEED}"
+OUT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}${ESUFFIX}"
 
 python hpc/collect_exploration.py --method "$EXPLORE_METHOD" --suite "$LIBERO_SUITE" \
   --task-ids "$LIBERO_TASK_IDS" --steps "$COLLECT_STEPS" --seed "$SEED" \

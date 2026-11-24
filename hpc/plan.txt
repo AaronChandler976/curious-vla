@@ -1,0 +1,110 @@
+# The experiment plan that hpc/autopilot.sh keeps running. One run per line:
+#   demos N_DEMOS SEED
+#   mix METHOD EXPLORE_STEPS N_DEMOS SEED [EXPLORE_SEED]
+# Lines are submitted in order, so earlier lines run first. Add lines to add runs.
+
+# Main grid: every condition x demo budget, 5 training seeds (seeds 0-2 first).
+demos 10 0
+mix random 5000 10 0
+mix random 20000 10 0
+mix icm 5000 10 0
+mix icm 20000 10 0
+demos 25 0
+mix random 5000 25 0
+mix random 20000 25 0
+mix icm 5000 25 0
+mix icm 20000 25 0
+demos 40 0
+mix random 5000 40 0
+mix random 20000 40 0
+mix icm 5000 40 0
+mix icm 20000 40 0
+demos 10 1
+mix random 5000 10 1
+mix random 20000 10 1
+mix icm 5000 10 1
+mix icm 20000 10 1
+demos 25 1
+mix random 5000 25 1
+mix random 20000 25 1
+mix icm 5000 25 1
+mix icm 20000 25 1
+demos 40 1
+mix random 5000 40 1
+mix random 20000 40 1
+mix icm 5000 40 1
+mix icm 20000 40 1
+demos 10 2
+mix random 5000 10 2
+mix random 20000 10 2
+mix icm 5000 10 2
+mix icm 20000 10 2
+demos 25 2
+mix random 5000 25 2
+mix random 20000 25 2
+mix icm 5000 25 2
+mix icm 20000 25 2
+demos 40 2
+mix random 5000 40 2
+mix random 20000 40 2
+mix icm 5000 40 2
+mix icm 20000 40 2
+
+# Exploration-data replicates at 10 demos: re-collected exploration data (collection seeds 1, 2),
+# to separate the effect of the method from that of one draw of exploration data.
+mix random 5000 10 0 1
+mix random 5000 10 1 1
+mix random 5000 10 2 1
+mix random 20000 10 0 1
+mix random 20000 10 1 1
+mix random 20000 10 2 1
+mix icm 5000 10 0 1
+mix icm 5000 10 1 1
+mix icm 5000 10 2 1
+mix icm 20000 10 0 1
+mix icm 20000 10 1 1
+mix icm 20000 10 2 1
+mix random 5000 10 0 2
+mix random 5000 10 1 2
+mix random 5000 10 2 2
+mix random 20000 10 0 2
+mix random 20000 10 1 2
+mix random 20000 10 2 2
+mix icm 5000 10 0 2
+mix icm 5000 10 1 2
+mix icm 5000 10 2 2
+mix icm 20000 10 0 2
+mix icm 20000 10 1 2
+mix icm 20000 10 2 2
+
+# Seeds 3-4 of the main grid.
+demos 10 3
+mix random 5000 10 3
+mix random 20000 10 3
+mix icm 5000 10 3
+mix icm 20000 10 3
+demos 25 3
+mix random 5000 25 3
+mix random 20000 25 3
+mix icm 5000 25 3
+mix icm 20000 25 3
+demos 40 3
+mix random 5000 40 3
+mix random 20000 40 3
+mix icm 5000 40 3
+mix icm 20000 40 3
+demos 10 4
+mix random 5000 10 4
+mix random 20000 10 4
+mix icm 5000 10 4
+mix icm 20000 10 4
+demos 25 4
+mix random 5000 25 4
+mix random 20000 25 4
+mix icm 5000 25 4
+mix icm 20000 25 4
+demos 40 4
+mix random 5000 40 4
+mix random 20000 40 4
+mix icm 5000 40 4
+mix icm 20000 40 4

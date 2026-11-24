@@ -11,7 +11,7 @@ mkdir -p runs/logs
 
 DEMO_BUDGETS="${DEMO_BUDGETS:-10 25}"
 SEEDS="${SEEDS:-0}"
-GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES")
+GPU=(--partition="$SLURM_PARTITION" --gres="$SLURM_GRES" ${SLURM_EXCLUDE:+--exclude="$SLURM_EXCLUDE"})
 echo "Submitting to partition $SLURM_PARTITION with --gres=$SLURM_GRES on $(hostname)"
 
 # SKIP_CHECK=1 skips the GPU check once it has passed on this cluster.
@@ -27,14 +27,15 @@ fi
 if [[ "${SKIP_REF:-0}" == "1" ]]; then
   echo "reference eval:   skipped"
 else
-  ref=$(sbatch --parsable "${GPU[@]}" "${DEP[@]}" hpc/01_eval_reference.sbatch)
+  ref=$(sbatch --parsable "${GPU[@]}" ${DEP[@]+"${DEP[@]}"} hpc/01_eval_reference.sbatch)
   echo "reference eval:   $ref"
 fi
 for n in $DEMO_BUDGETS; do
   for s in $SEEDS; do
     run="demos_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${n}_s${s}"
     if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then echo "fine-tune n=$n s=$s: already done"; continue; fi
-    j=$(N_DEMOS=$n SEED=$s sbatch --parsable --job-name="$run" "${GPU[@]}" "${DEP[@]}" hpc/02_finetune_demos.sbatch)
+    if squeue -u "$USER" -h -n "$run" -o %i | grep -q .; then echo "fine-tune n=$n s=$s: already queued or running"; continue; fi
+    j=$(N_DEMOS=$n SEED=$s sbatch --parsable --job-name="$run" "${GPU[@]}" ${DEP[@]+"${DEP[@]}"} hpc/02_finetune_demos.sbatch)
     echo "fine-tune n=$n s=$s: $j"
   done
 done

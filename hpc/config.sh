@@ -13,12 +13,18 @@ export PACKED_ENV_DIR="${PACKED_ENV_DIR:-$HOME/cvla-env}"
 # Which GPUs to ask Slurm for. Submit from HPC3 (`ssh hpc3`, login node g17). From the probe of
 # Nov 22 2026: gpuqs (max 2 days), gpuqm (7 days) and gpuql (14 days) share the same nodes:
 # A100s on cs001-cs004, H100s on g16/g18/g19, and P100s (too old for current PyTorch) on g*.
-# Always name the GPU type in the gres. If the A100 queue is long, try SLURM_GRES=gpu:h100:1,
-# or the NSF H100 queue: SLURM_PARTITION=nsfq SLURM_GRES=gpu:h100:1 (g20-g32, max 24 h per job,
-# at most 6 nodes per user). Our jobs ask for 24 h or less, so they fit.
-# submit_baseline.sh passes these on the sbatch command line, which overrides the #SBATCH lines.
-export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs}"
-export SLURM_GRES="${SLURM_GRES:-gpu:a100:1}"
+# The NSF H100 queue nsfq has g20-g32, max 24 h per job and at most 6 nodes per user; gpuqs allows
+# 2 nodes per user. Since Nov 24 2026 the jobs take any free A100 or H100 in either partition (a
+# GPU of any type, but never the P100 nodes g1-g15, which are excluded by name). Each job's log
+# records its node and GPU. To pin one type: SLURM_PARTITION=gpuqs SLURM_GRES=gpu:a100:1.
+# The submit scripts pass these on the sbatch command line, which overrides the #SBATCH lines.
+# cs002's Slurm GPU 0 is unusable (100% busy with no process, found Nov 24 2026); jobs that land
+# on it are resubmitted elsewhere by gpu_resubmit below.
+export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs,nsfq}"
+export SLURM_GRES="${SLURM_GRES:-gpu:1}"
+export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15]}"
+# Submit scripts pass all three on the sbatch line. Jobs inherit them from the submitting shell,
+# so a job that gpu_resubmit sends elsewhere asks for the same partitions and GPU types.
 
 # Pinned versions. lerobot 0.7.0 needs Python >= 3.12 and torch >= 2.7.
 export PYTHON_VERSION="3.12"
@@ -176,7 +182,9 @@ PYEOF
 
 gpu_resubmit() {  # gpu_resubmit SBATCH_SCRIPT: resubmit this job elsewhere, then exit
   local script=$1 node=${SLURMD_NODENAME:-$(hostname -s)} tries=${GPU_RETRIES:-0} max=${GPU_MAX_RETRIES:-3}
-  local excl="${GPU_EXCLUDE:+$GPU_EXCLUDE,}$node" part=${SLURM_JOB_PARTITION:-$SLURM_PARTITION} gres=$SLURM_GRES j
+  # SLURM_PARTITION, SLURM_GRES and SLURM_EXCLUDE are this job's submit settings (from config.sh in the
+  # submitting shell); Slurm's own job variables are SLURM_JOB_*.
+  local excl="${GPU_EXCLUDE:+$GPU_EXCLUDE,}$node" part=$SLURM_PARTITION gres=$SLURM_GRES base_excl=${SLURM_EXCLUDE:-} j
   if (( tries >= max )); then
     echo "GPU error: unusable GPU on $((tries + 1)) nodes ($excl); not resubmitting again" >&2; exit 1
   fi
@@ -184,8 +192,9 @@ gpu_resubmit() {  # gpu_resubmit SBATCH_SCRIPT: resubmit this job elsewhere, the
   local unset_args=(-u CUDA_VISIBLE_DEVICES) v
   for v in $(compgen -e | grep '^SLURM' | grep -v '^SLURM_CONF$'); do unset_args+=(-u "$v"); done
   if j=$(env "${unset_args[@]}" GPU_RETRIES=$((tries + 1)) GPU_EXCLUDE="$excl" SLURM_GRES="$gres" \
+         SLURM_PARTITION="$part" SLURM_EXCLUDE="$base_excl" \
          sbatch --parsable --job-name="${SLURM_JOB_NAME:-cvla-retry}" --partition="$part" --gres="$gres" \
-         --exclude="$excl" "$script"); then
+         --exclude="${base_excl:+$base_excl,}$excl" "$script"); then
     echo "GPU error: unusable GPU on $node; resubmitted as job $j (excluding $excl)" >&2
   else
     echo "GPU error: unusable GPU on $node, and the resubmit failed; rerun submit_exploration.sh" >&2

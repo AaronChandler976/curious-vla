@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)$")
+NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?$")
 
 
 def main() -> None:
@@ -28,6 +28,7 @@ def main() -> None:
             "explore_steps": int(m["steps"] or 0),
             "n_demos": int(m["n"]),
             "seed": int(m["seed"]),
+            "explore_seed": int(m["eseed"] or 0),
             "success_pct": round(overall["pc_success"], 1),
             "n_episodes": overall.get("n_episodes"),
             "ci95": overall.get("pc_success_ci95"),
@@ -35,15 +36,15 @@ def main() -> None:
         })
     for info_path in sorted(runs.glob("eval_reference/*/eval_info.json")):
         overall = json.loads(info_path.read_text())["overall"]
-        rows.append({"condition": "official smolvla_libero", "explore_steps": 0, "n_demos": -1, "seed": 0,
+        rows.append({"condition": "official smolvla_libero", "explore_steps": 0, "n_demos": -1, "seed": 0, "explore_seed": 0,
                      "success_pct": round(overall["pc_success"], 1), "n_episodes": overall.get("n_episodes"),
                      "ci95": overall.get("pc_success_ci95"), "run": info_path.parent.name})
     if not rows:
         sys.exit("no finished evals yet")
-    rows.sort(key=lambda r: (r["condition"], r["explore_steps"], r["n_demos"], r["seed"]))
-    print(f"{'condition':26} {'expl.steps':>10} {'demos/task':>10} {'seed':>4} {'success %':>9} {'episodes':>8}")
+    rows.sort(key=lambda r: (r["condition"], r["explore_steps"], r["n_demos"], r["explore_seed"], r["seed"]))
+    print(f"{'condition':26} {'expl.steps':>10} {'demos/task':>10} {'e.seed':>6} {'seed':>4} {'success %':>9} {'episodes':>8}")
     for r in rows:
-        print(f"{r['condition']:26} {r['explore_steps']:>10} {r['n_demos']:>10} {r['seed']:>4} "
+        print(f"{r['condition']:26} {r['explore_steps']:>10} {r['n_demos']:>10} {r['explore_seed']:>6} {r['seed']:>4} "
               f"{r['success_pct']:>9} {str(r['n_episodes']):>8}")
     with open(runs / "results.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
