@@ -35,7 +35,7 @@ for i in $(seq 1 40); do   # up to 20 minutes in the queue
 done
 [[ -f "$log" ]] || { echo "still queued after 20 min; check later with: grep -E 'EGL|episode' $log"; exit 0; }
 for i in $(seq 1 60); do   # up to 30 minutes (the render probe alone can take ~15)
-  grep -q -E "^\[$m\] episode|Timeout|Error|Traceback|no NVIDIA" "$log" 2>/dev/null && [[ $i -gt 2 ]] && break
+  grep -q -E "^\[$m\] episode|no rendering setup works|Timeout \(" "$log" 2>/dev/null && break
   [[ -z "$(squeue -h -j "$new" 2>/dev/null)" ]] && break
   sleep 30
 done
