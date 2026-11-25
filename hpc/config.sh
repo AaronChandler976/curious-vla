@@ -18,14 +18,13 @@ export PACKED_ENV_DIR="${PACKED_ENV_DIR:-$HOME/cvla-env}"
 # GPU of any type, but never the P100 nodes g1-g15, which are excluded by name). Each job's log
 # records its node and GPU. To pin one type: SLURM_PARTITION=gpuqs SLURM_GRES=gpu:a100:1.
 # The submit scripts pass these on the sbatch command line, which overrides the #SBATCH lines.
-# cs002's Slurm GPU 0 is unusable (100% busy with no process, found Nov 24 2026); jobs that land
-# on it are resubmitted elsewhere by gpu_resubmit below.
+# cs002's Slurm GPU 0 is unusable (100% busy with no process, found Nov 24 2026), so cs002 is excluded.
 export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs,nsfq}"
 export SLURM_GRES="${SLURM_GRES:-gpu:1}"
-export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15]}"
-# Collections also avoid cs002: two of its collections segfaulted inside robosuite and one rendered
-# on a GPU the job did not own (Nov 24 2026).
-export COLLECT_EXCLUDE="${COLLECT_EXCLUDE-${SLURM_EXCLUDE:+$SLURM_EXCLUDE,}cs002}"
+export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15],cs002}"
+# cs002 is excluded too (Nov 24 2026): one of its three Slurm GPUs is unusable and stays free, so
+# every new job landed on it, failed and resubmitted itself, and its collections crashed.
+export COLLECT_EXCLUDE="${COLLECT_EXCLUDE-${SLURM_EXCLUDE}}"
 # Submit scripts pass all three on the sbatch line. Jobs inherit them from the submitting shell,
 # so a job that gpu_resubmit sends elsewhere asks for the same partitions and GPU types.
 

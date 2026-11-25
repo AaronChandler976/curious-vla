@@ -50,8 +50,10 @@ mix random 20000 40 2
 mix icm 5000 40 2
 mix icm 20000 40 2
 
-# Exploration-data replicates at 10 demos: re-collected exploration data (collection seeds 1, 2),
+# Exploration-data replicates at 10 demos: re-collected exploration data (collection seeds 1 and 2, or 3),
 # to separate the effect of the method from that of one draw of exploration data.
+# Random uses collection seeds 1 and 3: random's seed-2 collection hung in robosuite at the same
+# episode (~12k steps) on two different nodes.
 mix random 5000 10 0 1
 mix random 5000 10 1 1
 mix random 5000 10 2 1
@@ -64,12 +66,12 @@ mix icm 5000 10 2 1
 mix icm 20000 10 0 1
 mix icm 20000 10 1 1
 mix icm 20000 10 2 1
-mix random 5000 10 0 2
-mix random 5000 10 1 2
-mix random 5000 10 2 2
-mix random 20000 10 0 2
-mix random 20000 10 1 2
-mix random 20000 10 2 2
+mix random 5000 10 0 3
+mix random 5000 10 1 3
+mix random 5000 10 2 3
+mix random 20000 10 0 3
+mix random 20000 10 1 3
+mix random 20000 10 2 3
 mix icm 5000 10 0 2
 mix icm 5000 10 1 2
 mix icm 5000 10 2 2
