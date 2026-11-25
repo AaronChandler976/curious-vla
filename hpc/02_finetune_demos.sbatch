@@ -22,6 +22,11 @@ source hpc/config.sh
 activate_env
 SELF=hpc/02_finetune_demos.sbatch   # Slurm runs a copy of this file, so name it for resubmits
 gpu_preflight "$SELF"
+# Rendering check (see render_check.py): a node that cannot render would fail the eval at the end.
+if ! timeout 600 python hpc/render_check.py --suite "$LIBERO_SUITE" --task-id "${LIBERO_TASK_IDS%%,*}"; then
+  echo "render check failed on ${SLURMD_NODENAME:-$(hostname -s)}" >&2
+  gpu_resubmit "$SELF"
+fi
 
 N_DEMOS="${N_DEMOS:-10}"
 SEED="${SEED:-0}"
@@ -113,12 +118,12 @@ EVAL_ARGS=(
   --output_dir="$OUT/eval"
 )
 # If a simulator worker process dies, try once more with the simulators in the main process (same
-# episodes and seeds). If that fails too, run_gpu resubmits the job to another node, where it
-# only evaluates.
+# episodes and seeds). If that fails too, the job is resubmitted to another node, where it only
+# evaluates (at most GPU_MAX_RETRIES times).
 if ! lerobot-eval "${EVAL_ARGS[@]}"; then
   echo "lerobot-eval failed; retrying with --eval.use_async_envs=false"
   rm -rf "$OUT/eval"
-  run_gpu "$SELF" lerobot-eval "${EVAL_ARGS[@]}" --eval.use_async_envs=false
+  lerobot-eval "${EVAL_ARGS[@]}" --eval.use_async_envs=false || { gpu_report; gpu_resubmit "$SELF"; }
 fi
 
 # /home is nearly full: keep only the final weights (and the 10k-step weights, for an
