@@ -110,3 +110,81 @@ mix random 5000 40 4
 mix random 20000 40 4
 mix icm 5000 40 4
 mix icm 20000 40 4
+
+# Seeds 5-9 of the main grid (added Nov 24: seed-to-seed std is 5-17 points, so 10 seeds per cell
+# roughly halve the CI width of 3 seeds).
+demos 10 5
+mix random 5000 10 5
+mix random 20000 10 5
+mix icm 5000 10 5
+mix icm 20000 10 5
+demos 25 5
+mix random 5000 25 5
+mix random 20000 25 5
+mix icm 5000 25 5
+mix icm 20000 25 5
+demos 40 5
+mix random 5000 40 5
+mix random 20000 40 5
+mix icm 5000 40 5
+mix icm 20000 40 5
+demos 10 6
+mix random 5000 10 6
+mix random 20000 10 6
+mix icm 5000 10 6
+mix icm 20000 10 6
+demos 25 6
+mix random 5000 25 6
+mix random 20000 25 6
+mix icm 5000 25 6
+mix icm 20000 25 6
+demos 40 6
+mix random 5000 40 6
+mix random 20000 40 6
+mix icm 5000 40 6
+mix icm 20000 40 6
+demos 10 7
+mix random 5000 10 7
+mix random 20000 10 7
+mix icm 5000 10 7
+mix icm 20000 10 7
+demos 25 7
+mix random 5000 25 7
+mix random 20000 25 7
+mix icm 5000 25 7
+mix icm 20000 25 7
+demos 40 7
+mix random 5000 40 7
+mix random 20000 40 7
+mix icm 5000 40 7
+mix icm 20000 40 7
+demos 10 8
+mix random 5000 10 8
+mix random 20000 10 8
+mix icm 5000 10 8
+mix icm 20000 10 8
+demos 25 8
+mix random 5000 25 8
+mix random 20000 25 8
+mix icm 5000 25 8
+mix icm 20000 25 8
+demos 40 8
+mix random 5000 40 8
+mix random 20000 40 8
+mix icm 5000 40 8
+mix icm 20000 40 8
+demos 10 9
+mix random 5000 10 9
+mix random 20000 10 9
+mix icm 5000 10 9
+mix icm 20000 10 9
+demos 25 9
+mix random 5000 25 9
+mix random 20000 25 9
+mix icm 5000 25 9
+mix icm 20000 25 9
+demos 40 9
+mix random 5000 40 9
+mix random 20000 40 9
+mix icm 5000 40 9
+mix icm 20000 40 9
