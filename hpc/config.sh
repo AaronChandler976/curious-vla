@@ -21,8 +21,8 @@ export PACKED_ENV_DIR="${PACKED_ENV_DIR:-$HOME/cvla-env}"
 # cs002's Slurm GPU 0 is unusable (100% busy with no process, found Nov 24 2026), so cs002 is excluded.
 export SLURM_PARTITION="${SLURM_PARTITION:-gpuqs,nsfq}"
 export SLURM_GRES="${SLURM_GRES:-gpu:1}"
-export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15],g25,g29,cs002}"
-# g25 and g29 are excluded (Nov 25 2026): LIBERO rendering aborts there, in worker and main process alike.
+export SLURM_EXCLUDE="${SLURM_EXCLUDE-g[1-15],g25,g27,g29,cs002}"
+# g25, g27 and g29 are excluded (Nov 25 2026): LIBERO rendering aborts there, in worker and main process alike.
 # cs002 is excluded too (Nov 24 2026): one of its three Slurm GPUs is unusable and stays free, so
 # every new job landed on it, failed and resubmitted itself, and its collections crashed.
 export COLLECT_EXCLUDE="${COLLECT_EXCLUDE-${SLURM_EXCLUDE}}"
