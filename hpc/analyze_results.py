@@ -105,6 +105,38 @@ def compare(df: pd.DataFrame, summ: pd.DataFrame, boots: dict) -> pd.DataFrame:
                      "n_seeds": len(a), "n_seeds_demos": len(b), "diff_vs_demos": a.mean() - b.mean(),
                      "boot_ci_lo": np.percentile(diff, 2.5), "boot_ci_hi": np.percentile(diff, 97.5),
                      "p_boot_le0": (diff <= 0).mean(), "welch_p": p})
+    # Pooled over demo budgets: the average of the per-budget differences (each budget weighted
+    # equally), with a bootstrap interval from the independent per-cell bootstraps.
+    for (c, b), g in summ[summ.condition != "demos only"].groupby(["condition", "explore_steps"]):
+        ns = [n for n in g.n_demos if ("demos only", 0, n) in boots]
+        if len(ns) < 2:
+            continue
+        diff = np.mean([boots[(c, b, n)] - boots[("demos only", 0, n)] for n in ns], axis=0)
+        point = np.mean([df[(df.condition == c) & (df.explore_steps == b) & (df.n_demos == n)]["success"].mean()
+                         - df[(df.condition == "demos only") & (df.n_demos == n)]["success"].mean() for n in ns])
+        rows.append({"condition": c, "explore_steps": b, "n_demos": "all", "n_seeds": "", "n_seeds_demos": "",
+                     "diff_vs_demos": point, "boot_ci_lo": np.percentile(diff, 2.5),
+                     "boot_ci_hi": np.percentile(diff, 97.5), "p_boot_le0": (diff <= 0).mean(), "welch_p": np.nan})
+    # The head-to-head question: ICM vs. random at the same exploration budget and demo budget.
+    for b in sorted(summ[summ.condition == "icm"].explore_steps.unique()):
+        ns = [n for n in summ.n_demos.unique() if ("icm", b, n) in boots and ("random", b, n) in boots]
+        per = {}
+        for n in sorted(ns):
+            a = df[(df.condition == "icm") & (df.explore_steps == b) & (df.n_demos == n)]["success"]
+            r = df[(df.condition == "random") & (df.explore_steps == b) & (df.n_demos == n)]["success"]
+            d = boots[("icm", b, n)] - boots[("random", b, n)]
+            per[n] = d
+            rows.append({"condition": "icm vs random", "explore_steps": b, "n_demos": n, "n_seeds": len(a),
+                         "n_seeds_demos": len(r), "diff_vs_demos": a.mean() - r.mean(),
+                         "boot_ci_lo": np.percentile(d, 2.5), "boot_ci_hi": np.percentile(d, 97.5),
+                         "p_boot_le0": (d <= 0).mean(), "welch_p": stats.ttest_ind(a, r, equal_var=False).pvalue})
+        if len(per) > 1:
+            d = np.mean(list(per.values()), axis=0)
+            pt = np.mean([rw["diff_vs_demos"] for rw in rows if rw["condition"] == "icm vs random"
+                          and rw["explore_steps"] == b and rw["n_demos"] != "all"])
+            rows.append({"condition": "icm vs random", "explore_steps": b, "n_demos": "all", "n_seeds": "",
+                         "n_seeds_demos": "", "diff_vs_demos": pt, "boot_ci_lo": np.percentile(d, 2.5),
+                         "boot_ci_hi": np.percentile(d, 97.5), "p_boot_le0": (d <= 0).mean(), "welch_p": np.nan})
     return pd.DataFrame(rows)
 
 
@@ -231,7 +263,7 @@ def main():
     summ, boots = summarize(main_df, rng)
     comp = compare(main_df, summ, boots)
     summ.to_csv(out / "summary.csv", index=False)
-    comp.to_csv(out / "comparisons.csv", index=False)
+    comp.to_csv(out / "comparisons.csv", index=False)  # n_demos "all" rows: pooled over budgets
     # Replicates: every exploration cell that has runs on more than one exploration collection.
     df50 = df[df.explore_pct.isin([0, 50])]
     rep_keys = df50[df50.explore_seed > 0][["condition", "explore_steps", "n_demos"]].drop_duplicates()
@@ -258,13 +290,17 @@ def main():
     for _, r in summ.sort_values(["condition", "explore_steps", "n_demos"]).iterrows():
         lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {r.n_seeds} | {pct(r['mean'])} | {pct(r['std'])} "
                      f"| {pct(r.t_ci_lo)} to {pct(r.t_ci_hi)} | {pct(r.boot_ci_lo)} to {pct(r.boot_ci_hi)} | {r.per_seed} |")
-    lines += ["", "## Each exploration condition vs. demos only at the same demo budget", "",
+    lines += ["", "## Each exploration condition vs. demos only at the same demo budget",
+              "", "Rows \"icm vs random\" compare ICM with random instead (positive: ICM better). Rows with "
+              "demos/task \"all\" average the per-budget differences.", "",
               "| condition | expl. steps | demos/task | seeds | diff (pts) | 95% CI (bootstrap) | P(diff <= 0) | Welch p |",
               "|---|---:|---:|---|---:|---|---:|---:|"]
-    for _, r in comp.sort_values(["condition", "explore_steps", "n_demos"]).iterrows():
-        lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {r.n_seeds} vs {r.n_seeds_demos} | "
+    comp["_n"] = comp.n_demos.map(lambda v: 10**6 if v == "all" else v)
+    for _, r in comp.sort_values(["condition", "explore_steps", "_n"]).iterrows():
+        seeds = "pooled" if r.n_demos == "all" else f"{r.n_seeds} vs {r.n_seeds_demos}"
+        lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {seeds} | "
                      f"{r.diff_vs_demos * 100:+.1f} | {r.boot_ci_lo * 100:+.1f} to {r.boot_ci_hi * 100:+.1f} | "
-                     f"{r.p_boot_le0:.3f} | {r.welch_p:.3f} |")
+                     f"{r.p_boot_le0:.3f} | {'' if pd.isna(r.welch_p) else f'{r.welch_p:.3f}'} |")
     if not rep_summ.empty:
         lines += ["", "## Exploration-data replicates", "",
                   "| condition | expl. steps | demos/task | collection seed | runs | mean % | std |", "|---|---:|---:|---:|---:|---:|---:|"]
