@@ -188,3 +188,56 @@ mix random 5000 40 9
 mix random 20000 40 9
 mix icm 5000 40 9
 mix icm 20000 40 9
+
+# Mixing-ratio ablation (added Nov 26): exploration at 10% and 25% of training frames instead of 50%,
+# to test whether exploration hurts because it dilutes the demos. Original collections (seed 0).
+mix random 5000 10 0 0 10
+mix icm 5000 10 0 0 10
+mix random 5000 25 0 0 10
+mix icm 5000 25 0 0 10
+mix random 5000 10 0 0 25
+mix icm 5000 10 0 0 25
+mix random 5000 25 0 0 25
+mix icm 5000 25 0 0 25
+mix random 20000 10 0 0 25
+mix icm 20000 10 0 0 25
+mix random 5000 10 1 0 10
+mix icm 5000 10 1 0 10
+mix random 5000 25 1 0 10
+mix icm 5000 25 1 0 10
+mix random 5000 10 1 0 25
+mix icm 5000 10 1 0 25
+mix random 5000 25 1 0 25
+mix icm 5000 25 1 0 25
+mix random 20000 10 1 0 25
+mix icm 20000 10 1 0 25
+mix random 5000 10 2 0 10
+mix icm 5000 10 2 0 10
+mix random 5000 25 2 0 10
+mix icm 5000 25 2 0 10
+mix random 5000 10 2 0 25
+mix icm 5000 10 2 0 25
+mix random 5000 25 2 0 25
+mix icm 5000 25 2 0 25
+mix random 20000 10 2 0 25
+mix icm 20000 10 2 0 25
+mix random 5000 10 3 0 10
+mix icm 5000 10 3 0 10
+mix random 5000 25 3 0 10
+mix icm 5000 25 3 0 10
+mix random 5000 10 3 0 25
+mix icm 5000 10 3 0 25
+mix random 5000 25 3 0 25
+mix icm 5000 25 3 0 25
+mix random 20000 10 3 0 25
+mix icm 20000 10 3 0 25
+mix random 5000 10 4 0 10
+mix icm 5000 10 4 0 10
+mix random 5000 25 4 0 10
+mix icm 5000 25 4 0 10
+mix random 5000 10 4 0 25
+mix icm 5000 10 4 0 25
+mix random 5000 25 4 0 25
+mix icm 5000 25 4 0 25
+mix random 20000 10 4 0 25
+mix icm 20000 10 4 0 25
