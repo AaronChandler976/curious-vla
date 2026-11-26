@@ -1,6 +1,6 @@
 # The experiment plan that hpc/autopilot.sh keeps running. One run per line:
 #   demos N_DEMOS SEED
-#   mix METHOD EXPLORE_STEPS N_DEMOS SEED [EXPLORE_SEED]
+#   mix METHOD EXPLORE_STEPS N_DEMOS SEED [EXPLORE_SEED [EXPLORE_PCT]]   (EXPLORE_PCT: % exploration frames, default 50)
 # Lines are submitted in order, so earlier lines run first. Add lines to add runs.
 
 # Main grid: every condition x demo budget, 5 training seeds (seeds 0-2 first).

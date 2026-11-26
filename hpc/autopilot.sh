@@ -66,17 +66,18 @@ ensure_collect() {  # ensure_collect METHOD ESEED: sets CID to the collection jo
   CID=$c
 }
 
-while read -r kind a b c d e <&3; do
+while read -r kind a b c d e f <&3; do
   [[ -z "$kind" || "$kind" == \#* ]] && continue
   dep=()
   if [[ "$kind" == demos ]]; then
     n=$a; s=$b; run="demos_${suffix}_n${n}_s${s}"; vars=(N_DEMOS=$n SEED=$s)
   elif [[ "$kind" == mix ]]; then
-    m=$a; bud=$b; n=$c; s=$d; es=${e:-0}; esuf=""; (( es > 0 )) && esuf="_e$es"
-    run="mix-$m-${bud}_${suffix}_n${n}_s${s}${esuf}"
-    vars=(EXPLORE_METHOD=$m EXPLORE_STEPS=$bud EXPLORE_SEED=$es N_DEMOS=$n SEED=$s)
+    m=$a; bud=$b; n=$c; s=$d; es=${e:-0}; pct=${f:-50}; esuf=""; fsuf=""
+    (( es > 0 )) && esuf="_e$es"; [[ "$pct" != 50 ]] && fsuf="_f$pct"
+    run="mix-$m-${bud}_${suffix}_n${n}_s${s}${esuf}${fsuf}"
+    vars=(EXPLORE_METHOD=$m EXPLORE_STEPS=$bud EXPLORE_SEED=$es EXPLORE_PCT=$pct N_DEMOS=$n SEED=$s)
   else
-    echo "unknown plan line: $kind $a $b $c $d $e" >&2; continue
+    echo "unknown plan line: $kind $a $b $c $d $e $f" >&2; continue
   fi
   if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then done_n=$((done_n + 1)); continue; fi
   if [[ -n "$(queued_id "$run")" ]]; then queued=$((queued + 1)); continue; fi

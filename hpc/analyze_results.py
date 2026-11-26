@@ -31,7 +31,7 @@ import pandas as pd
 from scipy import stats
 
 NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)"
-                  r"_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?$")
+                  r"_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?$")
 # Categorical slots 1-3 of the reference palette (validated all-pairs for three series).
 COLORS = {"demos only": "#2a78d6", "random": "#eb6834", "icm": "#1baf7a"}
 LABELS = {"demos only": "Demos only", "random": "Demos + random", "icm": "Demos + ICM"}
@@ -55,6 +55,7 @@ def load(runs: Path) -> tuple[pd.DataFrame, float | None]:
             "n_demos": int(m["n"]),
             "seed": int(m["seed"]),
             "explore_seed": int(m["eseed"] or 0),
+            "explore_pct": int(m["pct"] or (50 if m["steps"] else 0)),
             "n_success": int(o["n_success"]),
             "n_episodes": int(o["n_episodes"]),
             "success": o["n_success"] / o["n_episodes"],
@@ -180,7 +181,7 @@ def fig_vs_exploration(summ, df, out: Path):
         ax.set_ylim(0, 100)
     axes[0].set_ylabel("Success rate (%)")
     axes[0].legend(loc="upper right", frameon=False)
-    fig.supxlabel("Exploration env steps mixed in (thousands)", fontsize=9, y=0.02)
+    fig.supxlabel("Exploration env steps mixed in (thousands)", fontsize=9, y=-0.04)
     fig.savefig(out / "fig_success_vs_exploration.pdf")
     plt.close(fig)
 
@@ -226,14 +227,20 @@ def main():
     if df.empty:
         raise SystemExit("no finished evals")
     df.to_csv(out / "runs.csv", index=False)
-    main_df = df[df.explore_seed == 0]
+    main_df = df[(df.explore_seed == 0) & df.explore_pct.isin([0, 50])]
     summ, boots = summarize(main_df, rng)
     comp = compare(main_df, summ, boots)
     summ.to_csv(out / "summary.csv", index=False)
     comp.to_csv(out / "comparisons.csv", index=False)
     # Replicates: every exploration cell that has runs on more than one exploration collection.
-    rep_keys = df[df.explore_seed > 0][["condition", "explore_steps", "n_demos"]].drop_duplicates()
-    rep = df.merge(rep_keys, on=["condition", "explore_steps", "n_demos"])
+    df50 = df[df.explore_pct.isin([0, 50])]
+    rep_keys = df50[df50.explore_seed > 0][["condition", "explore_steps", "n_demos"]].drop_duplicates()
+    rep = df50.merge(rep_keys, on=["condition", "explore_steps", "n_demos"])
+    # Mixing-ratio ablation: cells run at other exploration percentages, next to the same cell at 50%.
+    abl_keys = df[~df.explore_pct.isin([0, 50])][["condition", "explore_steps", "n_demos"]].drop_duplicates()
+    abl = df[df.explore_seed == 0].merge(abl_keys, on=["condition", "explore_steps", "n_demos"])
+    abl_summ = (abl.groupby(["condition", "explore_steps", "n_demos", "explore_pct"])["success"]
+                .agg(["count", "mean", "std"]).reset_index()) if not abl.empty else pd.DataFrame()
     rep_summ = (rep.groupby(["condition", "explore_steps", "n_demos", "explore_seed"])["success"]
                 .agg(["count", "mean", "std"]).reset_index()) if not rep.empty else pd.DataFrame()
 
@@ -264,6 +271,14 @@ def main():
         for _, r in rep_summ.iterrows():
             lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {r.explore_seed} | {r['count']} | "
                          f"{pct(r['mean'])} | {pct(r['std'])} |")
+    if not abl_summ.empty:
+        lines += ["", "## Mixing-ratio ablation (exploration % of training frames)", "",
+                  "| condition | expl. steps | demos/task | expl. % | runs | mean % | std | demos only at this budget |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|"]
+        for _, r in abl_summ.iterrows():
+            b = summ[(summ.condition == "demos only") & (summ.n_demos == r.n_demos)]["mean"]
+            lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {r.explore_pct} | {r['count']} | "
+                         f"{pct(r['mean'])} | {pct(r['std'])} | {pct(b.iloc[0]) if len(b) else ''} |")
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     print(f"\nwrote {out}")

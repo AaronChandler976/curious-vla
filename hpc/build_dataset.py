@@ -10,9 +10,9 @@ feature dicts. This script only reads the raw data parquet rows (by their episod
 frame_index columns) and writes everything new through LeRobotDataset.create/add_frame, so the
 output's metadata is consistent by construction.
 
-- Demos: the episodes in --episodes, each written k = max(1, round(E / D)) times (D, E: demo and
-  exploration frame counts), so demos are about half of all frames at every budget; k = 1 with
-  no exploration. Each demo's instruction must match the LIBERO language in --selection.
+- Demos: the episodes in --episodes, each written k = max(1, round(E (1 - f) / (f D))) times (D, E:
+  demo and exploration frame counts; f: --explore-frac, default 0.5), so exploration is about a
+  fraction f of all frames at every budget (half by default); k = 1 with no exploration. Each demo's instruction must match the LIBERO language in --selection.
 - Exploration: the episodes from the start of the run up to --budget env steps (the 5k
   condition is the first 5k steps of the same run as the 20k condition).
 - Normalization: meta/stats.json is replaced by the full demo dataset's stats, which is what
@@ -95,6 +95,8 @@ def main() -> None:
     p.add_argument("--selection", type=Path, required=True, help="runs/selections/<run>.json from select_episodes.py")
     p.add_argument("--explore-root", type=Path, default=None)
     p.add_argument("--budget", type=int, default=0, help="exploration env steps to use")
+    p.add_argument("--explore-frac", type=float, default=0.5,
+                   help="target fraction of exploration frames in the mix (demos are repeated to reach it)")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--writer-threads", type=int, default=8)
     args = p.parse_args()
@@ -135,7 +137,10 @@ def main() -> None:
 
     D = sum(len(demo_rows[e]["frame_index"]) for e in demo_eps)
     E = sum(len(explore_rows[e]["frame_index"]) for e in explore_eps)
-    k = max(1, round(E / D)) if E else 1
+    f = args.explore_frac
+    if not 0 < f < 1:
+        raise SystemExit(f"--explore-frac must be in (0, 1), got {f}")
+    k = max(1, round(E * (1 - f) / (f * D))) if E else 1
 
     if args.out.exists():
         shutil.rmtree(args.out)
@@ -174,6 +179,7 @@ def main() -> None:
     info_out = {"demo_episodes": demo_eps, "demo_frames": D, "demo_repeats": k,
                 "explore_method": log["method"] if log else None, "explore_budget_steps": args.budget if log else 0,
                 "explore_episodes": len(explore_eps), "explore_frames": E,
+                "explore_frac_target": f if log else 0,
                 "demo_fraction_of_frames": round(k * D / (k * D + E), 3),
                 "total_frames": k * D + E, "total_episodes": len(sources)}
     (args.out / "mix_info.json").write_text(json.dumps(info_out, indent=2))

@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?$")
+NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?$")
 
 
 def main() -> None:
@@ -29,6 +29,7 @@ def main() -> None:
             "n_demos": int(m["n"]),
             "seed": int(m["seed"]),
             "explore_seed": int(m["eseed"] or 0),
+            "explore_pct": int(m["pct"] or (50 if m["steps"] else 0)),
             "success_pct": round(overall["pc_success"], 1),
             "n_episodes": overall.get("n_episodes"),
             "ci95": overall.get("pc_success_ci95"),
@@ -36,7 +37,7 @@ def main() -> None:
         })
     for info_path in sorted(runs.glob("eval_reference/*/eval_info.json")):
         overall = json.loads(info_path.read_text())["overall"]
-        rows.append({"condition": "official smolvla_libero", "explore_steps": 0, "n_demos": -1, "seed": 0, "explore_seed": 0,
+        rows.append({"condition": "official smolvla_libero", "explore_steps": 0, "n_demos": -1, "seed": 0, "explore_seed": 0, "explore_pct": 0,
                      "success_pct": round(overall["pc_success"], 1), "n_episodes": overall.get("n_episodes"),
                      "ci95": overall.get("pc_success_ci95"), "run": info_path.parent.name})
     if not rows:

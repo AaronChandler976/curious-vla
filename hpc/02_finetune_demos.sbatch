@@ -41,7 +41,11 @@ EXPLORE_STEPS="${EXPLORE_STEPS:-0}"
 EXPLORE_SEED="${EXPLORE_SEED:-0}"
 SUFFIX="${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}_n${N_DEMOS}_s${SEED}"
 ESUFFIX=""; (( EXPLORE_SEED > 0 )) && ESUFFIX="_e${EXPLORE_SEED}"
-if [[ -n "$EXPLORE_METHOD" ]]; then RUN="mix-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}${ESUFFIX}"; else RUN="demos_${SUFFIX}"; fi
+# EXPLORE_PCT: the percentage of training frames that are exploration frames (default 50). Other
+# values are an ablation of the mixing ratio; their run names get _f<pct>.
+EXPLORE_PCT="${EXPLORE_PCT:-50}"
+FSUFFIX=""; [[ "$EXPLORE_PCT" != 50 ]] && FSUFFIX="_f${EXPLORE_PCT}"
+if [[ -n "$EXPLORE_METHOD" ]]; then RUN="mix-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}${ESUFFIX}${FSUFFIX}"; else RUN="demos_${SUFFIX}"; fi
 OUT="$RUNS_DIR/$RUN"
 
 DATA_ROOT=$(dataset_root)
@@ -65,7 +69,7 @@ BUILD_ARGS=()
 if [[ -n "$EXPLORE_METHOD" ]]; then
   EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}${ESUFFIX}"
   [[ -f "$EXPLORE_ROOT/exploration_log.json" ]] || { echo "ERROR: no exploration data at $EXPLORE_ROOT; run 03_collect.sbatch first" >&2; exit 1; }
-  BUILD_ARGS=(--explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS")
+  BUILD_ARGS=(--explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS" --explore-frac "$(awk -v p="$EXPLORE_PCT" 'BEGIN{print p/100}')")
 fi
 TRAIN_DATA="$RUNS_DIR/traindata/$RUN"
 if [[ ! -f "$TRAIN_DATA/verified" ]]; then
