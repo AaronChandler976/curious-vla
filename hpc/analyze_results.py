@@ -50,9 +50,9 @@ def condition_of(m) -> str:
 N_BOOT = 10000
 
 
-def load(runs: Path) -> tuple[pd.DataFrame, float | None]:
+def load(runs: Path, eval_dir: str = "eval") -> tuple[pd.DataFrame, float | None]:
     rows = []
-    for p in sorted(runs.glob("*/eval/eval_info.json")):
+    for p in sorted(runs.glob(f"*/{eval_dir}/eval_info.json")):
         m = NAME.match(p.parent.parent.name)
         if not m:
             continue
@@ -75,7 +75,9 @@ def load(runs: Path) -> tuple[pd.DataFrame, float | None]:
             **{f"task{t}_success": s / n for t, (s, n) in per_task.items()},
         })
     ref = None
-    for p in sorted(runs.glob("eval_reference/*/eval_info.json")) + sorted(runs.glob("eval_reference/eval_info.json")):
+    refs = (sorted(runs.glob("eval_reference/*/eval_info.json")) + sorted(runs.glob("eval_reference/eval_info.json"))
+            if eval_dir == "eval" else sorted(runs.glob(f"eval_variants/reference_nas{eval_dir.removeprefix('eval_nas')}/eval_info.json")))
+    for p in refs:
         ref = json.loads(p.read_text())["overall"]["pc_success"] / 100
     return pd.DataFrame(rows), ref
 
@@ -362,12 +364,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("runs", nargs="?", default="runs")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--eval-dir", default="eval", help="eval (n_action_steps 50) or eval_nas10 (closed-loop re-eval)")
     a = ap.parse_args()
     runs = Path(a.runs)
     out = Path(a.out) if a.out else runs / "analysis"
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(0)
-    df, ref = load(runs)
+    df, ref = load(runs, a.eval_dir)
     if df.empty:
         raise SystemExit("no finished evals")
     df.to_csv(out / "runs.csv", index=False)
@@ -397,7 +400,8 @@ def main():
     fig_replicates(rep, out)
     fig_falsification(paired_df, out)
 
-    lines = ["# Results summary", "", f"{len(df)} finished runs. Success over 100 eval episodes per run "
+    lines = ["# Results summary", "", f"Evaluation: `{a.eval_dir}` (n_action_steps {'50, the checkpoint default' if a.eval_dir == 'eval' else a.eval_dir.removeprefix('eval_nas')}).", "",
+             f"{len(df)} finished runs. Success over 100 eval episodes per run "
              "(50 per task). Mean and std are over training seeds; CIs are 95%.", ""]
     if ref is not None:
         lines += [f"Official `smolvla_libero` checkpoint on the same tasks: {ref * 100:.0f}%.", ""]

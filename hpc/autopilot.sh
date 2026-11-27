@@ -99,9 +99,35 @@ while read -r kind a b c d e f <&3; do
     { echo "$(date '+%F %T') submitted $run as $j"; submitted=$((submitted + 1)); }
 done 3< "$PLAN"
 
+# Re-evaluate finished runs closed-loop (n_action_steps 10), 8 runs per job. A run is pending while
+# a queued or running job's list (runs/reeval/reeval-<jobid>.txt) names it.
+mkdir -p "$RUNS_DIR/reeval"
+live=" $(squeue -u "$USER" -h -n cvla-reeval -o %i | tr '\n' ' ') "
+pending=$(for f in "$RUNS_DIR"/reeval/reeval-*.txt; do [[ -f "$f" ]] || continue
+  id=${f##*/reeval-}; id=${id%.txt}; [[ "$live" == *" $id "* ]] && cat "$f"; done | sort -u)
+todo=()
+for p in "$RUNS_DIR"/*/eval/eval_info.json; do
+  r=${p%/eval/eval_info.json}; r=${r##*/}
+  [[ -f "$RUNS_DIR/$r/eval_nas10/eval_info.json" ]] && continue
+  grep -qxF "$r" <<<"$pending" && continue
+  (( $(cat "$RUNS_DIR"/reeval/reeval-*.txt 2>/dev/null | grep -cxF "$r") >= 3 )) && continue   # failed 3 times
+  todo+=("$r")
+done
+for ((i = 0; i < ${#todo[@]}; i += 8)); do
+  tmpf=$(mktemp "$RUNS_DIR/reeval/list-XXXXXX.txt"); printf '%s\n' "${todo[@]:i:8}" > "$tmpf"
+  if j=$(RUN_LIST="$tmpf" NAS=10 sbatch --parsable --job-name=cvla-reeval "${GPU[@]}" hpc/06_reeval.sbatch); then
+    cp "$tmpf" "$RUNS_DIR/reeval/reeval-$j.txt"   # the job reads $tmpf; this copy records what job $j covers
+    scontrol top "$j" 2>/dev/null || true        # ahead of this user's pending training jobs
+    echo "$(date '+%F %T') submitted reeval of $(wc -l < "$tmpf") runs as $j"
+  else
+    rm -f "$tmpf"
+  fi
+done
+
 python3 hpc/summarize_results.py "$RUNS_DIR" > /dev/null 2>&1
 if [[ -x "$PACKED_ENV_DIR/bin/python" ]]; then
   "$PACKED_ENV_DIR/bin/python" hpc/analyze_results.py "$RUNS_DIR" > /dev/null 2>&1 || echo "analysis failed"
+  "$PACKED_ENV_DIR/bin/python" hpc/analyze_results.py "$RUNS_DIR" --eval-dir eval_nas10 --out "$RUNS_DIR/analysis_nas10" > /dev/null 2>&1 || echo "analysis (nas10) failed"
 fi
 total=$(grep -cvE '^\s*(#|$)' "$PLAN")
 running=$(squeue -u "$USER" -h -t R | wc -l)
