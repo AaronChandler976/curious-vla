@@ -108,7 +108,7 @@ Negative transfer (2026) & Mismatched data under action-only loss can hurt a VLA
 \end{frame}
 
 % ---------------------------------------------------------------- 5. eval protocol
-\begin{frame}{The evaluation setting was worth 25 points}
+\begin{frame}{The evaluation setting was worth 20 to 40 points}
 \centering
 \includegraphics[width=0.9\textwidth]{c0_eval.pdf}\par\vspace{0.3em}
 \small\raggedright
@@ -198,7 +198,7 @@ Replanning every 10 steps still runs faster than LIBERO's 20 Hz control.\\[0.3em
 \begin{itemize}\setlength\itemsep{0.7em}
 \item \textbf{Negative result:} co-training SmolVLA on task-free exploration with a BC loss costs 9--12 points on average and up to 25 with few demos. It actively hurts; it does not just dilute.
 \item \textbf{The source does not matter here:} ICM vs random is within $\pm$3 points, and inside the variation between collections. One collection per method would have told a false story.
-\item \textbf{Check the evaluation first:} open-loop chunk execution hid 25 points and doubled the noise, which manufactured a fake ICM effect.
+\item \textbf{Check the evaluation first:} open-loop chunk execution hid 20 to 40 points and doubled the noise, which manufactured a fake ICM effect.
 \item \textbf{Next:} use the data through inverse dynamics (as TAP does), unfreeze the VLM, then revisit curiosity and VLM-guided exploration.
 \end{itemize}
 \end{frame}
