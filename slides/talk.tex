@@ -100,28 +100,36 @@ Negative transfer (2026) & Mismatched data under action-only loss can hurt a VLA
 \column{0.46\textwidth}
 \textbf{Scale}
 \begin{itemize}\small\setlength\itemsep{0.4em}
-\item 464 fine-tunes planned (224 done, 240 running)
+\item 464 fine-tunes planned, each scored on 100 rollouts
 \item 1.0 h per 20k-step fine-tune on H100 (1.6 h on A100), 7.7 GB peak
-\item Official \texttt{smolvla\_libero} scores 64\% on these tasks through our eval (others report $\approx$66\% on LIBERO-Object for the public checkpoint)
+\item A cron ``autopilot'' on the cluster submits, retries and re-analyzes with no manual steps
 \end{itemize}
 \end{columns}
 \end{frame}
 
-% ---------------------------------------------------------------- 5. main result
-\begin{frame}{Result 1: no exploration mix beats demos only}
+% ---------------------------------------------------------------- 5. eval protocol
+\begin{frame}{The evaluation setting was worth 25 points}
 \centering
-\includegraphics[width=0.96\textwidth]{c1_main.pdf}
-\small Mean of 10 seeds, 95\% CI. Pooled change vs demos only: random $-14$ / $-6$, ICM $-2$ / $-19$ pts (5k / 20k).
+\includegraphics[width=0.9\textwidth]{c0_eval.pdf}\par\vspace{0.3em}
+\small\raggedright
+SmolVLA predicts 50 actions at a time. The checkpoint default executes all 50 open loop; replanning every 10 (LeRobot's LIBERO setting) lifts every policy and halves seed noise. Found by the profiling ablation, so \textbf{all runs were re-scored} on the same episodes. All results below use replanning every 10.
 \end{frame}
 
-% ---------------------------------------------------------------- 6. ICM vs random
-\begin{frame}{Result 2: ICM vs random flips sign; the data draw matters as much}
+% ---------------------------------------------------------------- 6. main result
+\begin{frame}{Result 1: exploration never helps; it hurts most with few demos}
 \centering
-\includegraphics[width=0.93\textwidth]{c2_replicates.pdf}
-\small ICM $-$ random: \textbf{+12} pts at 5k, \textbf{$-13$} pts at 20k (paired, 30 pairs each). Re-collecting the \emph{same} method's data moves success by up to 25 pts. Every collection is below demos only.
+\includegraphics[width=0.93\textwidth]{c1_main.pdf}\par\vspace{0.3em}
+\small Mean of 10 seeds, 95\% CI. Paired change vs demos only, pooled over demo budgets: random $-12$ / $-9$, ICM $-10$ / $-12$ points (5k / 20k). With 10 demos: $-10$ to $-25$.
 \end{frame}
 
-% ---------------------------------------------------------------- 7. diagnosis: what is in the data
+% ---------------------------------------------------------------- 7. ICM vs random
+\begin{frame}{Result 2: the exploration source makes no measurable difference}
+\centering
+\includegraphics[width=0.9\textwidth]{c2_replicates.pdf}\par\vspace{0.3em}
+\small ICM $-$ random, paired over 30 seeds: \textbf{+2.3} [$-3$, $+8$] at 5k, \textbf{$-2.3$} [$-8$, $+3$] at 20k. Under the noisier open-loop eval this looked like $+12$ / $-13$. Re-collecting the same method's data moves results as much as switching methods (c = collection).
+\end{frame}
+
+% ---------------------------------------------------------------- 8. diagnosis
 \begin{frame}{Why: the exploration data has nothing a BC loss can learn}
 \begin{columns}[T]
 \column{0.6\textwidth}\footnotesize
@@ -138,39 +146,31 @@ PPO updates / policy std & -- & -- & 7 / 1.00 \\ \bottomrule
 \begin{itemize}\setlength\itemsep{0.5em}
 \item SmolVLA trains only the action expert; the VLM is frozen. Exploration can only teach \emph{actions}.
 \item Its actions are unpredictable from what the robot sees, so BC learns noise.
-\item The ICM policy \alert{barely trained}: it differed from random mainly in action scale, not curiosity.
+\item The first ICM policy \alert{barely trained}: it differed from random mainly in action scale.
 \end{itemize}
 \end{columns}
 \end{frame}
 
-% ---------------------------------------------------------------- 8. falsification
-\begin{frame}{Falsification tests (running on HPC now)}
-\small
-\begin{tabular}{@{}p{0.27\textwidth}p{0.36\textwidth}p{0.3\textwidth}@{}}\toprule
-\textbf{Test} & \textbf{If \dots} & \textbf{Result} \\ \midrule
-Dilution control: demos only, 10k steps (= demo exposure of a 50\% mix) & mix $\approx$ it: exploration is inert; mix $<$ it: exploration actively hurts & \pending{Nov 30} \\
-Exploration first, then demos (TAP order, BC loss) & beats demos-10k: exploration has value through pretraining & \pending{Nov 30} \\
-ICM with 150k-step warm-up (230 PPO updates) & beats random: curiosity matters once it is trained & \pending{Nov 30} \\
-3 collections per method & ICM$-$random holds across collections & \pending{Nov 30} \\
-Mixing share 10 / 25 / 50\% & harm grows with the share & at 10\% back to demos-only level \\ \bottomrule
-\end{tabular}
-\vspace{0.6em}
-
-Decision rule: call a difference zero only if its paired 95\% CI lies within $\pm$5 pts.
+% ---------------------------------------------------------------- 9. falsification
+\begin{frame}{Falsification tests: dilution, exploration-first, trained curiosity}
+\centering
+\includegraphics[height=0.62\textheight]{c4_paired.pdf}\par\vspace{0.3em}
+\small\raggedright
+Halving demo steps costs nothing, yet mixes sit below demos-only at 10k steps: exploration frames \textbf{actively hurt}; it is not just dilution. Exploring first, then demos, does not help either. \pending{rows with few pairs fill in by Nov 30}
 \end{frame}
 
-% ---------------------------------------------------------------- 9. ratio
+% ---------------------------------------------------------------- 10. ratio
 \begin{frame}{Ablation: how much exploration to mix in}
 \centering
-\includegraphics[width=0.93\textwidth]{c3_ratio.pdf}
-\small 5 seeds at 10\% and 25\%, 10 at 50\%. No share beats demos only; small shares are harmless.
+\includegraphics[width=0.93\textwidth]{c3_ratio.pdf}\par\vspace{0.3em}
+\small 5 seeds at 10\% and 25\%, 10 at 50\%. No share reaches demos only.
 \end{frame}
 
-% ---------------------------------------------------------------- 10. cost
+% ---------------------------------------------------------------- 11. cost
 \begin{frame}{Latency and resources}
 \small
 \begin{columns}[T]
-\column{0.48\textwidth}
+\column{0.45\textwidth}
 \textbf{Training} (per fine-tune, batch 32)\\[0.3em]
 \begin{tabular}{@{}lrr@{}}\toprule
 GPU & s/step & 20k steps \\ \midrule
@@ -179,21 +179,27 @@ H100 NVL & 0.18 & 1.02 h \\
 A100 40GB & 0.28 & 1.57 h \\ \bottomrule
 \end{tabular}\\[0.3em]
 Peak memory 7.7 GB; 100M of 450M params trainable.
-\column{0.48\textwidth}
-\textbf{Inference} (one 50-step action chunk)\\[0.3em]
-\pending{A100/H100 latency, ms per chunk and per step}\\[0.5em]
-\textbf{Data collection}\\[0.3em]
-20k exploration steps in $\approx$32 min (10 steps/s, rendering bound); trained ICM adds a 150k-step warm-up.
+\column{0.5\textwidth}
+\textbf{Inference} (A100, fp32, batch 1)\\[0.3em]
+\footnotesize\begin{tabular}{@{}lrr@{}}\toprule
+ & Ours & smolvla\_libero \\ \midrule
+Params & 450M & 605M \\
+Per 50-action chunk & 218 ms & 426 ms \\
+Per step, replan every 10 & 22 ms & 43 ms \\
+Peak GPU memory & 0.97 GB & 1.28 GB \\ \bottomrule
+\end{tabular}\\[0.3em]
+Replanning every 10 steps still runs faster than LIBERO's 20 Hz control.\\[0.3em]
+\textbf{Exploration:} 20k steps in $\approx$32 min (rendering bound).
 \end{columns}
 \end{frame}
 
-% ---------------------------------------------------------------- 11. insights
+% ---------------------------------------------------------------- 12. insights
 \begin{frame}{What I learned}
 \begin{itemize}\setlength\itemsep{0.7em}
-\item \textbf{Negative result:} mixing task-free exploration into SmolVLA fine-tuning the default way costs up to 19 points. Don't do it.
-\item The \textbf{data source} question can't be answered with one collection per method: re-collecting moves results as much as switching methods.
-\item The \textbf{training channel} matters more than the explorer: with a frozen VLM and a BC loss, unlabeled actions are noise. TAP's inverse-dynamics loss is the channel that works.
-\item \textbf{Next:} inverse-dynamics pretraining on the same data, a trained curiosity explorer, unfreezing the VLM.
+\item \textbf{Negative result:} co-training SmolVLA on task-free exploration with a BC loss costs 9--12 points on average and up to 25 with few demos. It actively hurts; it does not just dilute.
+\item \textbf{The source does not matter here:} ICM vs random is within $\pm$3 points, and inside the variation between collections. One collection per method would have told a false story.
+\item \textbf{Check the evaluation first:} open-loop chunk execution hid 25 points and doubled the noise, which manufactured a fake ICM effect.
+\item \textbf{Next:} use the data through inverse dynamics (as TAP does), unfreeze the VLM, then revisit curiosity and VLM-guided exploration.
 \end{itemize}
 \end{frame}
 

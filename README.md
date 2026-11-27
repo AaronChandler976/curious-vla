@@ -16,22 +16,23 @@ Exploration is matched by collected environment steps (5k and 20k), training by 
 
 ## Results so far
 
-224 fine-tunes, 100 evaluation episodes each (full tables: `runs/analysis/summary.md`, made by `hpc/analyze_results.py`).
+239 fine-tunes, each scored on 100 rollouts, replanning every 10 actions (`n_action_steps=10`; see below). Full tables: `runs/analysis_nas10/summary.md`, made by `hpc/analyze_results.py --eval-dir eval_nas10`.
 
-- **No exploration mix beats demos only.** Pooled over demo budgets, the paired change vs demos only is −13.7 (random 5k), −5.7 (random 20k), −1.7 (ICM 5k) and −18.9 (ICM 20k) points.
-- **ICM vs random reverses with the budget:** +12.0 points at 5k, −13.2 at 20k. Re-collecting the *same* method's data moves success by up to 25 points, so one collection per method cannot settle a data-source claim.
-- **Why:** SmolVLA fine-tunes only its action expert (the VLM is frozen), and exploration actions are not predictable from observations (held-out R² ≤ 0.01 vs 0.42 for demos; `hpc/exploration_stats.py`). The first ICM explorer also barely trained (7 PPO updates).
-- **Running now** (240 more fine-tunes): a dilution control (demos only, 10k steps), exploration-first-then-demos training, an ICM explorer with a 150k-step warm-up, and 3 independent collections per method. The research review in [`docs/research-review.md`](docs/research-review.md) sets out each test and what each outcome would mean.
+- **Exploration data never helps when co-trained with demos.** The paired change vs demos only, pooled over demo budgets, is −11.9 (random 5k), −9.3 (random 20k), −9.6 (ICM 5k) and −11.5 (ICM 20k) points. It hurts most with 10 demos per task (−10 to −25).
+- **The exploration source makes no measurable difference.** ICM minus random is +2.3 [−3.2, +7.7] at 5k and −2.3 [−8.0, +3.4] at 20k, and re-collecting the same method's data moves results as much as switching methods.
+- **The evaluation setting mattered more than any method.** Executing each predicted 50-action chunk open loop (the checkpoint default) scored 25 to 35 points lower and doubled the seed noise. The official `smolvla_libero` checkpoint goes from 64% to 82% on these tasks. Under that noisier evaluation, ICM vs random looked like +12 / −13 points, which the closed-loop re-scoring shows was noise.
+- **Why:** SmolVLA fine-tunes only its action expert (the VLM is frozen), and exploration actions are not predictable from observations (held-out R² ≤ 0.01 vs 0.42 for demos; `hpc/exploration_stats.py`). Early falsification runs show that halving the demo gradient steps costs nothing, while the mixes stay below that control, so exploration frames actively hurt rather than just dilute.
+- **Still running:** two-stage (exploration first, then demos), an ICM explorer with a 150k-step warm-up, and 3 independent collections per method. [`docs/research-review.md`](docs/research-review.md) sets out each test and what each outcome would mean.
 
 | Condition (10 seeds each) | 10 demos | 25 demos | 40 demos |
 |---|---:|---:|---:|
-| Demos only | 46.4 | 45.0 | 58.0 |
-| + random 5k | 36.0 | 33.0 | 39.4 |
-| + random 20k | 34.7 | 49.4 | 48.1 |
-| + ICM 5k | 35.8 | 48.0 | 60.6 |
-| + ICM 20k | 26.9 | 27.4 | 38.4 |
+| Demos only | 78.2 | 83.3 | 90.1 |
+| + random 5k | 68.6 | 63.7 | 83.6 |
+| + random 20k | 57.3 | 82.6 | 83.9 |
+| + ICM 5k | 56.0 | 79.1 | 87.6 |
+| + ICM 20k | 53.4 | 79.5 | 84.1 |
 
-Task success (%). The official `HuggingFaceVLA/smolvla_libero` checkpoint scores 64% on the same two tasks through this pipeline.
+Task success (%), replanning every 10 actions. The official `HuggingFaceVLA/smolvla_libero` checkpoint scores 82% on the same two tasks.
 
 ## Repository structure
 
