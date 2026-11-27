@@ -36,9 +36,15 @@ bootstrap intervals is more statistical care than most VLA papers, which report 
 **Reference check.** The official `smolvla_libero` checkpoint scores 64% on our two tasks, below the
 paper's ~96% for LIBERO-Object. Other groups see the same gap: one paper reports 65.6% for SmolVLA
 on LIBERO-Object, and a reproduction study notes that the public checkpoint was trained on one
-eighth of the paper's sample budget. So the gap comes from the public checkpoint, not our pipeline. The
-`n_action_steps` ablation (run `05_profile_and_variants`) checks how much open-loop chunk
-execution costs.
+eighth of the paper's sample budget. So part of the gap comes from the public checkpoint. The
+`n_action_steps` ablation (Nov 27) found the rest: the main grid ran each predicted 50-step chunk
+open loop (the checkpoint default). Replanning every 10 steps, LeRobot's documented LIBERO
+setting, raises the reference to 82% and demos-only (40 demos, seeds 0-2) from 57/48/64% to
+93/85/86%. Every finished run is now re-scored at 10 steps with the same seeds and episodes
+(`runs/<run>/eval_nas10/`, `runs/analysis_nas10/`), and 10 steps is the primary metric. First
+re-scored cells: demos only 78 / 83 / 90% at 10 / 25 / 40 demos (now monotone in demos, with a
+seed std of 4 to 13 pts instead of 15 to 18), and ICM 20k is still below demos only (−12 pts pooled
+on the first 19 runs). The negative result survives the stronger evaluation.
 
 **Scope.** It fits a semester and the available compute: one suite, two tasks, a 450M model,
 about 2 GPU-hours per run on A100/H100. 464 runs is affordable because the autopilot keeps up to
@@ -104,7 +110,7 @@ this channel.
 | 100 eval episodes per run | ±5 pts binomial SE per run | Hierarchical bootstrap over seeds and episodes |
 | LR schedule auto-scales to total steps | 10k-step runs decay faster | Matched where it matters: demos-10k and seq stage 2 have the same schedule |
 | Frozen VLM (`train_expert_only`) | Exploration cannot change visual features, only the action expert and state projection | Scope statement; unfreezing is future work |
-| Open-loop chunks (n_action_steps 50) | May depress all success rates | Same for all conditions; ablation at 10 and 25 |
+| Open-loop chunks (n_action_steps 50) | Depressed every success rate by about 25 pts and doubled seed noise | Found by the ablation; all runs re-scored at 10 steps, which is now the primary metric |
 
 **Q5. What is the cheapest experiment to run this week to decide whether to continue?**
 `exploration_stats.py` (one CPU minute) showed the exploration actions carry no
