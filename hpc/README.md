@@ -1,12 +1,9 @@
 # Running on the SJSU CoE HPC
 
-These scripts run the first slice of the project on the CoE HPC cluster, which uses the Slurm scheduler:
-
-1. A GPU node check.
-2. An evaluation of the official SmolVLA LIBERO checkpoint, as a sanity check of the pipeline.
-3. The **demos-only** fine-tunes at reduced demo budgets.
-
-The random and ICM exploration conditions will add their own jobs later and reuse the same config.
+These scripts run the whole study on the CoE HPC cluster (Slurm): the reference eval of the official
+SmolVLA LIBERO checkpoint, exploration collection (random, ICM, ICM with a warm-up), and every fine-tune in
+`plan.txt` (demos only, co-training with exploration, exploration-then-demos), each followed by its LIBERO
+evaluation, plus the analysis and profiling.
 
 | File | What it does | Where it runs |
 |---|---|---|
@@ -34,6 +31,11 @@ The random and ICM exploration conditions will add their own jobs later and reus
 | `plan.txt` | The full experiment plan, one run per line; add a line to add a run | read by `autopilot.sh` |
 | `autopilot.sh` | Submits every planned run that is not done or queued (and the collections it needs), cancels jobs whose collection failed, stops retrying a run after 3 real failures, and refreshes `runs/results.csv` and `runs/analysis/`; idempotent | HPC3 login node, from cron every 20 min |
 | `analyze_results.py` | Mean, std and 95% CIs (seed t-interval and hierarchical bootstrap) per cell, each exploration condition vs. demos only, and the PDF figures, into `runs/analysis/` | HPC3 or desktop, with the packed env's Python |
+| `05_profile_and_variants.sbatch` / `profile_inference.py` | Inference latency and memory of a checkpoint, and evals with `n_action_steps` 10 and 25 → `runs/profile/`, `runs/eval_variants/` | GPU node |
+| `exploration_stats.py` | Per exploration dataset: workspace coverage, object moves, closeness to the demos, and whether actions are predictable from the state | login node |
+| `train_profile.py` | Seconds per step, samples/s and peak memory per GPU type, from the fine-tune logs | login node |
+| `talk_figures.py` | The talk's figures (PDF) from `runs/analysis/runs.csv` | anywhere with matplotlib |
+| `dry_run.sbatch` | `dry_run.sh` inside a short GPU job, for days when the login node cannot render | GPU node |
 
 ## Which cluster
 
