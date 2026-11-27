@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?$")
+NAME = re.compile(r"^(?P<cond>demos|(?P<mode>mix|seq)-(?P<method>\w+?)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?(?:_t(?P<tsteps>\d+))?$")
 
 
 def main() -> None:
@@ -24,7 +24,8 @@ def main() -> None:
             continue
         overall = json.loads(info_path.read_text())["overall"]
         rows.append({
-            "condition": "demos only" if m["cond"] == "demos" else m["method"],
+            "condition": ("demos only" + (f" {int(m['tsteps']) // 1000}k" if m["tsteps"] else "")) if m["cond"] == "demos"
+                         else (m["method"] if m["mode"] == "mix" else f"seq-{m['method']}"),
             "explore_steps": int(m["steps"] or 0),
             "n_demos": int(m["n"]),
             "seed": int(m["seed"]),

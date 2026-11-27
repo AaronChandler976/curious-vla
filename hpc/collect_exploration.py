@@ -6,6 +6,13 @@ Two exploration sources, run under the same environment-step budget:
   icm    : curiosity-driven play. A small Gaussian policy is trained online with PPO on the
            Intrinsic Curiosity Module reward (Pathak et al. 2017): the forward model's error at
            predicting the next state's learned features. It acts with the same --hold.
+           With the defaults it makes only 7 PPO updates in 20k steps, so its policy stays close
+           to its initial one (policy std 1.0): a weak curiosity baseline.
+  icmw   : ICM with a warm-up. The same explorer first trains for --warmup-steps env steps that
+           are not recorded (default 150k, with --rollout 128 decisions per PPO update, about 230
+           updates), then keeps learning while the --steps recorded steps are collected. The
+           recorded budget is the same as for random and icm; the warm-up's extra env steps are
+           reported separately (exploration_log.json: warmup_steps).
 
 Both read the same low-dimensional observation (the 8-D robot state plus the simulator's joint
 positions, which include every object's pose). Neither sees images or task rewards.
@@ -131,6 +138,7 @@ def mlp(i, o, h=128):
 class RandomExplorer:
     def __init__(self, obs_dim, act_dim, rng, **_):
         self.rng, self.act_dim = rng, act_dim
+        self.stats = []
 
     def act(self, obs):
         a = self.rng.uniform(-1, 1, self.act_dim)
@@ -145,7 +153,7 @@ class ICMExplorer:
     """PPO on the ICM intrinsic reward, acting once per held macro-action."""
 
     def __init__(self, obs_dim, act_dim, rng, rollout=512, feat_dim=64, eta=1.0, beta=0.2,
-                 lr=3e-4, epochs=4, minibatch=128, gamma=0.99, lam=0.95, clip=0.2, seed=0):
+                 lr=3e-4, epochs=4, minibatch=128, gamma=0.99, lam=0.95, clip=0.2, seed=0, ent_coef=0.0):
         torch.manual_seed(seed)
         self.rng, self.act_dim = rng, act_dim
         self.norm = RunningNorm(obs_dim)
@@ -157,7 +165,7 @@ class ICMExplorer:
         self.opt_pi = torch.optim.Adam([*self.pi.parameters(), *self.v.parameters(), self.log_std], lr=lr)
         self.opt_icm = torch.optim.Adam([*self.enc.parameters(), *self.inv.parameters(), *self.fwd.parameters()], lr=lr)
         self.eta, self.beta, self.rollout, self.epochs, self.mb = eta, beta, rollout, epochs, minibatch
-        self.gamma, self.lam, self.clip = gamma, lam, clip
+        self.gamma, self.lam, self.clip, self.ent_coef = gamma, lam, clip, ent_coef
         self.buf = []
         self.ret_rms, self.ret = RunningNorm(1), 0.0
         self.stats = []
@@ -222,7 +230,8 @@ class ICMExplorer:
                 ratio = (d.log_prob(u[j]).sum(-1) - logp_old[j]).exp()
                 pl = -torch.min(ratio * adv[j], ratio.clamp(1 - self.clip, 1 + self.clip) * adv[j]).mean()
                 vl = ((self.v(o[j])[:, 0] - ret[j]) ** 2).mean()
-                self.opt_pi.zero_grad(); (pl + 0.5 * vl).backward(); self.opt_pi.step()
+                ent = d.entropy().sum(-1).mean()
+                self.opt_pi.zero_grad(); (pl + 0.5 * vl - self.ent_coef * ent).backward(); self.opt_pi.step()
                 f, f2 = self.enc(o[j]), self.enc(o2[j])
                 inv_l = ((self.inv(torch.cat([f, f2], -1)) - a[j]) ** 2).mean()
                 fwd_l = 0.5 * ((self.fwd(torch.cat([f, a[j]], -1)) - f2.detach()) ** 2).sum(-1).mean()
@@ -237,18 +246,22 @@ class ICMExplorer:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--method", choices=["random", "icm"], required=True)
+    p.add_argument("--method", choices=["random", "icm", "icmw"], required=True)
     p.add_argument("--suite", required=True)
     p.add_argument("--task-ids", required=True)
     p.add_argument("--steps", type=int, required=True, help="total env steps over all tasks")
     p.add_argument("--episode-len", type=int, default=200)
     p.add_argument("--hold", type=int, default=5, help="env steps each sampled action is held")
     p.add_argument("--rollout", type=int, default=512, help="ICM: decisions per PPO update")
+    p.add_argument("--warmup-steps", type=int, default=None,
+                   help="icmw: unrecorded env steps of explorer training before recording (default 150000)")
+    p.add_argument("--ent-coef", type=float, default=0.0, help="ICM: PPO entropy bonus")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--demo-root", required=True, help="local demo dataset; features and fps are copied from it")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--fake-env", action="store_true", help="test without LIBERO")
     args = p.parse_args()
+    warmup = args.warmup_steps if args.warmup_steps is not None else (150000 if args.method == "icmw" else 0)
 
     # The explorer networks are tiny: one thread avoids OpenMP thread contention inside a Slurm
     # CPU allocation. Every 5 minutes, dump all Python stacks to the log so a stall shows where.
@@ -276,15 +289,39 @@ def main() -> None:
 
     explorer = None
     log, steps, ep, t0 = [], 0, 0, time.time()
+    wsteps, wep, wlog = 0, 0, []   # warm-up (icmw): env steps that are not recorded
     while steps < args.steps:
-        scene = scenes[ep % len(scenes)]
+        warm = wsteps < warmup
+        scene = scenes[(wep if warm else ep) % len(scenes)]
         frame, qpos = scene.reset()
         if explorer is None:
             obs_dim = len(frame["observation.state"]) + len(qpos)
-            cls = ICMExplorer if args.method == "icm" else RandomExplorer
-            explorer = cls(obs_dim, act_dim, rng, rollout=args.rollout, seed=args.seed)
+            cls = RandomExplorer if args.method == "random" else ICMExplorer
+            explorer = cls(obs_dim, act_dim, rng, rollout=args.rollout, seed=args.seed, ent_coef=args.ent_coef)
         q0 = qpos.copy()
         obs = np.concatenate([frame["observation.state"], qpos])
+        if warm:
+            ep_len = min(args.episode_len, warmup - wsteps)
+            r_sum, max_obj_move, eef = 0.0, 0.0, []
+            for t in range(ep_len):
+                if t % args.hold == 0:
+                    action, extra = explorer.act(obs)
+                    start_obs = obs
+                frame, qpos, _ = scene.step(action)
+                obs = np.concatenate([frame["observation.state"], qpos])
+                eef.append(frame["observation.state"][:3].copy())
+                max_obj_move = max(max_obj_move, float(np.abs(qpos[9:] - q0[9:]).max()) if len(qpos) > 9 else 0.0)
+                if (t + 1) % args.hold == 0 or t == ep_len - 1:
+                    r_sum += explorer.observe(start_obs, action, obs, t == ep_len - 1, extra)
+            wsteps += ep_len
+            wep += 1
+            st = getattr(explorer, "stats", [])
+            wlog.append({"episode": wep - 1, "env_steps_after": wsteps, "intrinsic_reward": r_sum,
+                         "max_object_qpos_change": max_obj_move, "eef_std": float(np.std(np.array(eef), 0).mean()),
+                         "policy_std": st[-1]["policy_std"] if st else None})
+            print(f"[{args.method} warm-up] episode {wep} steps {wsteps}/{warmup} obj_move {max_obj_move:.3f} "
+                  f"r_int {r_sum:.2f} policy_std {wlog[-1]['policy_std']} ({wsteps / (time.time() - t0):.0f} steps/s)", flush=True)
+            continue
         ep_len = min(args.episode_len, args.steps - steps)
         r_sum, max_obj_move, successes = 0.0, 0.0, 0
         for t in range(ep_len):
@@ -314,7 +351,8 @@ def main() -> None:
         s.close()
     summary = {"method": args.method, "suite": args.suite, "task_ids": task_ids, "steps": steps,
                "episodes": ep, "hold": args.hold, "episode_len": args.episode_len, "seed": args.seed,
-               "seconds": round(time.time() - t0), "episodes_log": log,
+               "seconds": round(time.time() - t0), "warmup_steps": wsteps, "warmup_log": wlog,
+               "ent_coef": args.ent_coef, "rollout": args.rollout, "episodes_log": log,
                "icm_updates": getattr(explorer, "stats", [])}
     (args.out / "exploration_log.json").write_text(json.dumps(summary, indent=1))
     print(f"wrote {ep} episodes, {steps} steps to {args.out}")

@@ -58,8 +58,9 @@ ensure_collect() {  # ensure_collect METHOD ESEED: sets CID to the collection jo
   c=$(queued_id "collect-$key")
   if [[ -z "$c" ]]; then
     if (( $(n_fails "collect-$key") >= MAX_FAILS )); then stuck+=("collect-$key"); return 1; fi
+    local tl=(); [[ "$m" == icmw ]] && tl=(--time=12:00:00)   # 150k-step warm-up first
     c=$(EXPLORE_METHOD=$m EXPLORE_SEED=$es COLLECT_STEPS=20000 sbatch --parsable --job-name="collect-$key" \
-        "${CGPU[@]}" hpc/03_collect.sbatch) || return 1
+        "${CGPU[@]}" ${tl[@]+"${tl[@]}"} hpc/03_collect.sbatch) || return 1
     echo "$(date '+%F %T') submitted collect-$key as $c"
   fi
   COLLECT_DEP[$key]=$c
@@ -70,7 +71,12 @@ while read -r kind a b c d e f <&3; do
   [[ -z "$kind" || "$kind" == \#* ]] && continue
   dep=()
   if [[ "$kind" == demos ]]; then
-    n=$a; s=$b; run="demos_${suffix}_n${n}_s${s}"; vars=(N_DEMOS=$n SEED=$s)
+    n=$a; s=$b; st=${c:-20000}; tsuf=""; [[ "$st" != 20000 ]] && tsuf="_t$st"
+    run="demos_${suffix}_n${n}_s${s}${tsuf}"; vars=(N_DEMOS=$n SEED=$s STEPS=$st)
+  elif [[ "$kind" == seq ]]; then
+    m=$a; bud=$b; n=$c; s=$d; es=${e:-0}; esuf=""; (( es > 0 )) && esuf="_e$es"
+    run="seq-$m-${bud}_${suffix}_n${n}_s${s}${esuf}"
+    vars=(TRAIN_MODE=seq EXPLORE_METHOD=$m EXPLORE_STEPS=$bud EXPLORE_SEED=$es N_DEMOS=$n SEED=$s)
   elif [[ "$kind" == mix ]]; then
     m=$a; bud=$b; n=$c; s=$d; es=${e:-0}; pct=${f:-50}; esuf=""; fsuf=""
     (( es > 0 )) && esuf="_e$es"; [[ "$pct" != 50 ]] && fsuf="_f$pct"
@@ -82,7 +88,7 @@ while read -r kind a b c d e f <&3; do
   if [[ -f "$RUNS_DIR/$run/eval/eval_info.json" ]]; then done_n=$((done_n + 1)); continue; fi
   if [[ -n "$(queued_id "$run")" ]]; then queued=$((queued + 1)); continue; fi
   if (( $(n_fails "$run") >= MAX_FAILS )); then stuck+=("$run"); continue; fi
-  if [[ "$kind" == mix ]]; then
+  if [[ "$kind" == mix || "$kind" == seq ]]; then
     ensure_collect "$m" "$es" || { stuck+=("$run (no exploration data)"); continue; }
     [[ -n "$CID" ]] && dep=(--dependency=afterok:$CID)
   fi

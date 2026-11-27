@@ -119,5 +119,25 @@ step 9-train-mix-2-steps lerobot-train \
   --dataset.repo_id=local/data_mix --dataset.root="$LOG/data_mix" \
   --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
   --output_dir="$LOG/train_mix" --job_name=dryrun_mix
-rm -rf "$LOG/train_mix/checkpoints" "$LOG/data_mix" "$LOG/data_demos"
+# ICM with a warm-up (icmw), and the two-stage condition's stage 1: exploration frames alone,
+# 2 training steps, then 2 demo-only steps that start from the stage-1 weights.
+step 10-collect-icmw python hpc/collect_exploration.py --method icmw --warmup-steps 60 --suite "$LIBERO_SUITE" \
+  --task-ids "$LIBERO_TASK_IDS" --steps 60 --episode-len 30 --rollout 4 \
+  --demo-root "$DATA_ROOT" --out "$LOG/exploration_icmw"
+step 10a-build-explore-only python hpc/build_dataset.py --demo-root "$DATA_ROOT" --selection "$LOG/selection.json" \
+  --explore-root "$LOG/exploration_icmw" --budget 60 --explore-only --out "$LOG/data_stage1"
+step 10b-verify-explore-only python hpc/verify_training_data.py --root "$LOG/data_stage1" \
+  --selection "$LOG/selection.json" --policy-dir "$BASE_DIR"
+show 10b-verify-explore-only 3
+step 10c-train-stage1 lerobot-train \
+  --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cpu \
+  --dataset.repo_id=local/data_stage1 --dataset.root="$LOG/data_stage1" \
+  --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
+  --output_dir="$LOG/train_stage1" --job_name=dryrun_stage1
+step 10d-train-stage2 lerobot-train \
+  --policy.path="$LOG/train_stage1/checkpoints/000002/pretrained_model" --policy.push_to_hub=false --policy.device=cpu \
+  --dataset.repo_id=local/data_demos --dataset.root="$LOG/data_demos" \
+  --batch_size=1 --num_workers=0 --steps=2 --save_freq=2 --log_freq=1 --env_eval_freq=0 \
+  --output_dir="$LOG/train_stage2" --job_name=dryrun_stage2
+rm -rf "$LOG/train_mix/checkpoints" "$LOG/train_stage1" "$LOG/train_stage2" "$LOG/data_mix" "$LOG/data_demos" "$LOG/data_stage1"
 echo "DRY RUN PASSED"

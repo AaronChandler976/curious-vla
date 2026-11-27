@@ -24,7 +24,10 @@ RENDER_ENV=$(python hpc/pick_egl_device.py --demo-root "$(dataset_root)" --suite
 echo "Rendering with: $RENDER_ENV"
 export $RENDER_ENV
 
-EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random or icm}"
+EXPLORE_METHOD="${EXPLORE_METHOD:?set EXPLORE_METHOD=random, icm or icmw}"
+# icmw (ICM with a 150k-step unrecorded warm-up) makes a PPO update every 128 decisions instead
+# of 512, so its policy actually trains. It takes ~5 h; submit it with --time=12:00:00.
+METHOD_ARGS=(); [[ "$EXPLORE_METHOD" == icmw ]] && METHOD_ARGS=(--rollout 128)
 COLLECT_STEPS="${COLLECT_STEPS:-20000}"
 # EXPLORE_SEED (or SEED) picks the collection's seed: its RNG and its scenes' initial states.
 # Seed 0 is the original collection; seeds 1+ write to a directory with an _e<seed> suffix.
@@ -35,7 +38,7 @@ OUT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_
 
 python hpc/collect_exploration.py --method "$EXPLORE_METHOD" --suite "$LIBERO_SUITE" \
   --task-ids "$LIBERO_TASK_IDS" --steps "$COLLECT_STEPS" --seed "$SEED" \
-  --demo-root "$DATA_ROOT" --out "$OUT" ${EXTRA_COLLECT_ARGS:-}
+  --demo-root "$DATA_ROOT" --out "$OUT" ${METHOD_ARGS[@]+"${METHOD_ARGS[@]}"} ${EXTRA_COLLECT_ARGS:-}
 python hpc/check_exploration_format.py --demo-repo "$DEMO_DATASET" --demo-root "$DATA_ROOT" \
   --explore-root "$OUT" --suite "$LIBERO_SUITE" --task-ids "$LIBERO_TASK_IDS"
 echo "Done: $OUT"

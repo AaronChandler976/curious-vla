@@ -30,12 +30,23 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-NAME = re.compile(r"^(?P<cond>demos|mix-(?P<method>\w+)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)"
-                  r"_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?$")
-# Categorical slots 1-3 of the reference palette (validated all-pairs for three series).
-COLORS = {"demos only": "#2a78d6", "random": "#eb6834", "icm": "#1baf7a"}
-LABELS = {"demos only": "Demos only", "random": "Demos + random", "icm": "Demos + ICM"}
-MARKERS = {"demos only": "o", "random": "s", "icm": "^"}
+NAME = re.compile(r"^(?P<cond>demos|(?P<mode>mix|seq)-(?P<method>\w+?)-(?P<steps>\d+))_(?P<suite>\w+?)_tasks(?P<tasks>[\d-]+)"
+                  r"_n(?P<n>\d+)_s(?P<seed>\d+)(?:_e(?P<eseed>\d+))?(?:_f(?P<pct>\d+))?(?:_t(?P<tsteps>\d+))?$")
+# Categorical slots of the reference palette.
+COLORS = {"demos only": "#2a78d6", "random": "#eb6834", "icm": "#1baf7a", "icmw": "#8e5cd9",
+          "demos only 10k": "#7fb2ea", "seq-random": "#f2a27f", "seq-icm": "#7fd3b5", "seq-icmw": "#bb9ee8"}
+LABELS = {"demos only": "Demos only", "random": "Demos + random", "icm": "Demos + ICM",
+          "icmw": "Demos + ICM (warm-up)", "demos only 10k": "Demos only, 10k steps",
+          "seq-random": "Random, then demos", "seq-icm": "ICM, then demos", "seq-icmw": "ICM (warm-up), then demos"}
+MARKERS = {"demos only": "o", "random": "s", "icm": "^", "icmw": "D", "demos only 10k": "o",
+           "seq-random": "s", "seq-icm": "^", "seq-icmw": "D"}
+MAIN = ["demos only", "random", "icm", "icmw"]   # the co-training grid at 20k training steps
+
+
+def condition_of(m) -> str:
+    if m["cond"] == "demos":
+        return "demos only" if int(m["tsteps"] or 20000) == 20000 else f"demos only {int(m['tsteps']) // 1000}k"
+    return m["method"] if m["mode"] == "mix" else f"seq-{m['method']}"
 N_BOOT = 10000
 
 
@@ -50,7 +61,9 @@ def load(runs: Path) -> tuple[pd.DataFrame, float | None]:
         o = d["overall"]
         rows.append({
             "run": p.parent.parent.name,
-            "condition": "demos only" if m["cond"] == "demos" else m["method"],
+            "condition": condition_of(m),
+            "mode": m["mode"] or "demos",
+            "train_steps": int(m["tsteps"] or 20000),
             "explore_steps": int(m["steps"] or 0),
             "n_demos": int(m["n"]),
             "seed": int(m["seed"]),
@@ -172,11 +185,12 @@ def fig_vs_demos(summ, df, ref, out: Path):
     fig, axes = plt.subplots(1, len(budgets), figsize=(3.3 * len(budgets), 2.8), sharey=True)
     axes = np.atleast_1d(axes)
     for ax, b in zip(axes, budgets):
-        for i, cond in enumerate(["demos only", "random", "icm"]):
+        conds = [c for c in MAIN if c in set(summ.condition)]
+        for i, cond in enumerate(conds):
             steps = 0 if cond == "demos only" else b
             s = summ[(summ.condition == cond) & (summ.explore_steps == steps)].sort_values("n_demos")
             raw = df[(df.condition == cond) & (df.explore_steps == steps)].groupby("n_demos")
-            draw_cell(ax, s.n_demos, s, cond, raw, (i - 1) * 0.9)
+            draw_cell(ax, s.n_demos, s, cond, raw, (i - (len(conds) - 1) / 2) * 0.9)
         if ref is not None:
             ax.axhline(ref * 100, color="#52514e", linestyle=(0, (4, 3)), linewidth=1)
             ax.text(10, ref * 100 + 1.5, f"official smolvla_libero ({ref * 100:.0f}%)",
@@ -198,13 +212,14 @@ def fig_vs_exploration(summ, df, out: Path):
     base_all = summ[summ.condition == "demos only"]
     for ax, n in zip(axes, ns):
         base = base_all[base_all.n_demos == n]
-        for i, cond in enumerate(["random", "icm"]):
+        econds = [c for c in MAIN[1:] if c in set(summ.condition)]
+        for i, cond in enumerate(econds):
             s = summ[(summ.condition == cond) & (summ.n_demos == n)]
             s = pd.concat([base, s]).sort_values("explore_steps")
             raw = pd.concat([df[(df.condition == "demos only") & (df.n_demos == n)],
                              df[(df.condition == cond) & (df.n_demos == n)]]).groupby("explore_steps")
             xs = s.explore_steps.to_numpy() / 1000
-            draw_cell(ax, xs, s, cond, [(k / 1000, g) for k, g in raw], (i - 0.5) * 0.5)
+            draw_cell(ax, xs, s, cond, [(k / 1000, g) for k, g in raw], (i - (len(econds) - 1) / 2) * 0.5)
         if not base.empty:
             ax.errorbar([0], base["mean"] * 100, fmt="o", color=COLORS["demos only"], markersize=6,
                         markeredgecolor="white", label=LABELS["demos only"], zorder=4)
@@ -242,6 +257,103 @@ def fig_replicates(rep: pd.DataFrame, out: Path):
     plt.close(fig)
 
 
+# Paired comparisons. Runs with the same demo budget and training seed share the demo subset (the
+# seed picks it), the training seed and the eval seed (so the same initial states), so their
+# difference removes the demo-subset variance that dominates the unpaired comparison.
+PAIRS = [  # (A, A's exploration steps, B, B's exploration steps, question)
+    ("random", 5000, "demos only", 0, "co-training with random data vs demos only"),
+    ("random", 20000, "demos only", 0, "co-training with random data vs demos only"),
+    ("icm", 5000, "demos only", 0, "co-training with ICM data vs demos only"),
+    ("icm", 20000, "demos only", 0, "co-training with ICM data vs demos only"),
+    ("icmw", 5000, "demos only", 0, "co-training with warmed-up ICM data vs demos only"),
+    ("icmw", 20000, "demos only", 0, "co-training with warmed-up ICM data vs demos only"),
+    ("icm", 5000, "random", 5000, "ICM vs random data, same budget"),
+    ("icm", 20000, "random", 20000, "ICM vs random data, same budget"),
+    ("icmw", 5000, "random", 5000, "warmed-up ICM vs random data, same budget"),
+    ("icmw", 20000, "random", 20000, "warmed-up ICM vs random data, same budget"),
+    ("icmw", 20000, "icm", 20000, "warmed-up ICM vs barely trained ICM"),
+    ("demos only 10k", 0, "demos only", 0, "dilution: half the demo gradient steps"),
+    ("random", 20000, "demos only 10k", 0, "50% mix vs demos at matched demo exposure"),
+    ("icm", 20000, "demos only 10k", 0, "50% mix vs demos at matched demo exposure"),
+    ("random", 5000, "demos only 10k", 0, "50% mix vs demos at matched demo exposure"),
+    ("icm", 5000, "demos only 10k", 0, "50% mix vs demos at matched demo exposure"),
+    ("seq-random", 20000, "demos only 10k", 0, "exploration pretraining vs none, matched demo steps"),
+    ("seq-icm", 20000, "demos only 10k", 0, "exploration pretraining vs none, matched demo steps"),
+    ("seq-icmw", 20000, "demos only 10k", 0, "exploration pretraining vs none, matched demo steps"),
+    ("seq-random", 20000, "demos only", 0, "two-stage vs demos only, matched total steps"),
+    ("seq-icm", 20000, "demos only", 0, "two-stage vs demos only, matched total steps"),
+    ("seq-icmw", 20000, "demos only", 0, "two-stage vs demos only, matched total steps"),
+    ("seq-random", 20000, "random", 20000, "two-stage vs co-training, same data"),
+    ("seq-icm", 20000, "icm", 20000, "two-stage vs co-training, same data"),
+    ("seq-icm", 20000, "seq-random", 20000, "ICM vs random data, two-stage"),
+    ("seq-icmw", 20000, "seq-random", 20000, "warmed-up ICM vs random data, two-stage"),
+]
+
+
+def paired_comparisons(df: pd.DataFrame, rng) -> pd.DataFrame:
+    rows = []
+    for a, ab, b, bb, q in PAIRS:
+        A = df[(df.condition == a) & (df.explore_steps == ab)].set_index(["n_demos", "seed"])
+        B = df[(df.condition == b) & (df.explore_steps == bb)].set_index(["n_demos", "seed"])
+        both = A.index.intersection(B.index)
+        if len(both) < 3:
+            continue
+        d_all = (A.loc[both, "success"] - B.loc[both, "success"])
+        for n in sorted(set(both.get_level_values(0))) + ["all"]:
+            d = d_all if n == "all" else d_all[d_all.index.get_level_values(0) == n]
+            if len(d) < 3:
+                continue
+            v = d.to_numpy()
+            # Bootstrap over pairs (stratified by demo budget for the pooled row).
+            if n == "all":
+                groups = [d_all[d_all.index.get_level_values(0) == k].to_numpy() for k in set(both.get_level_values(0))]
+                bs = np.mean([g[rng.integers(0, len(g), size=(N_BOOT, len(g)))].mean(1) for g in groups], axis=0)
+                point = np.mean([g.mean() for g in groups])
+            else:
+                bs = v[rng.integers(0, len(v), size=(N_BOOT, len(v)))].mean(1)
+                point = v.mean()
+            half = stats.t.ppf(0.975, len(v) - 1) * v.std(ddof=1) / np.sqrt(len(v))
+            try:
+                w = stats.wilcoxon(v).pvalue if np.any(v != 0) else 1.0
+            except ValueError:
+                w = np.nan
+            rows.append({"a": a, "a_steps": ab, "b": b, "b_steps": bb, "question": q, "n_demos": n, "pairs": len(v),
+                         "mean_diff": point, "t_ci_lo": v.mean() - half, "t_ci_hi": v.mean() + half,
+                         "boot_ci_lo": np.percentile(bs, 2.5), "boot_ci_hi": np.percentile(bs, 97.5),
+                         "p_paired_t": stats.ttest_1samp(v, 0).pvalue, "p_wilcoxon": w,
+                         "a_wins": int((v > 0).sum()), "ties": int((v == 0).sum())})
+    return pd.DataFrame(rows)
+
+
+def fig_falsification(df: pd.DataFrame, out: Path):
+    """Every condition at 20k total training steps (plus demos only at 10k) side by side, per demo budget."""
+    order = [("demos only", 0), ("demos only 10k", 0), ("random", 20000), ("icm", 20000), ("icmw", 20000),
+             ("seq-random", 20000), ("seq-icm", 20000), ("seq-icmw", 20000)]
+    order = [(c, b) for c, b in order if not df[(df.condition == c) & (df.explore_steps == b)].empty]
+    if len(order) < 3:
+        return
+    ns = sorted(df.n_demos.unique())
+    fig, axes = plt.subplots(1, len(ns), figsize=(2.9 * len(ns), 3.0), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, n in zip(axes, ns):
+        for i, (c, b) in enumerate(order):
+            g = df[(df.condition == c) & (df.explore_steps == b) & (df.n_demos == n)]["success"] * 100
+            if g.empty:
+                continue
+            ax.scatter(np.full(len(g), i) + np.linspace(-0.15, 0.15, len(g)), g, s=8, color=COLORS[c], alpha=0.5, linewidths=0)
+            m = g.mean(); se = g.std(ddof=1) / np.sqrt(len(g)) if len(g) > 1 else 0
+            ax.errorbar([i], [m], yerr=[1.96 * se], fmt=MARKERS[c], color=COLORS[c], markersize=6,
+                        markeredgecolor="white", capsize=2, zorder=3)
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels([LABELS[c] + ("" if b == 0 or c.startswith("seq") else f" {b // 1000}k") for c, b in order],
+                           rotation=60, ha="right", fontsize=7)
+        ax.set_title(f"{n} demos per task")
+        ax.set_ylim(0, 100)
+    axes[0].set_ylabel("Success rate (%)")
+    fig.savefig(out / "fig_falsification.pdf")
+    plt.close(fig)
+
+
 def pct(x):
     return "" if pd.isna(x) else f"{x * 100:.1f}"
 
@@ -259,7 +371,10 @@ def main():
     if df.empty:
         raise SystemExit("no finished evals")
     df.to_csv(out / "runs.csv", index=False)
-    main_df = df[(df.explore_seed == 0) & df.explore_pct.isin([0, 50])]
+    main_df = df[(df.explore_seed == 0) & df.explore_pct.isin([0, 50]) & df.condition.isin(MAIN)]
+    paired_df = df[(df.explore_seed == 0) & df.explore_pct.isin([0, 50])]
+    pair = paired_comparisons(paired_df, rng)
+    pair.to_csv(out / "paired.csv", index=False)
     summ, boots = summarize(main_df, rng)
     comp = compare(main_df, summ, boots)
     summ.to_csv(out / "summary.csv", index=False)
@@ -280,6 +395,7 @@ def main():
     fig_vs_demos(summ, main_df, ref, out)
     fig_vs_exploration(summ, main_df, out)
     fig_replicates(rep, out)
+    fig_falsification(paired_df, out)
 
     lines = ["# Results summary", "", f"{len(df)} finished runs. Success over 100 eval episodes per run "
              "(50 per task). Mean and std are over training seeds; CIs are 95%.", ""]
@@ -315,6 +431,18 @@ def main():
             b = summ[(summ.condition == "demos only") & (summ.n_demos == r.n_demos)]["mean"]
             lines.append(f"| {r.condition} | {r.explore_steps} | {r.n_demos} | {r.explore_pct} | {r['count']} | "
                          f"{pct(r['mean'])} | {pct(r['std'])} | {pct(b.iloc[0]) if len(b) else ''} |")
+    if not pair.empty:
+        lines += ["", "## Paired comparisons (same demo subset, training seed and eval seed)", "",
+                  "Each pair is one training seed at one demo budget; diff = A minus B in points. "
+                  "Rows with demos/task \"all\" average the per-budget mean differences.", "",
+                  "| A | B | question | demos/task | pairs | diff (pts) | 95% CI (t) | 95% CI (bootstrap) | paired t p | Wilcoxon p | A wins |",
+                  "|---|---|---|---:|---:|---:|---|---|---:|---:|---:|"]
+        lab = lambda c, b: c + (f" {b // 1000}k" if b else "")
+        for _, r in pair.iterrows():
+            lines.append(f"| {lab(r.a, r.a_steps)} | {lab(r.b, r.b_steps)} | {r.question} | {r.n_demos} | {r.pairs} | "
+                         f"{r.mean_diff * 100:+.1f} | {r.t_ci_lo * 100:+.1f} to {r.t_ci_hi * 100:+.1f} | "
+                         f"{r.boot_ci_lo * 100:+.1f} to {r.boot_ci_hi * 100:+.1f} | {r.p_paired_t:.3f} | "
+                         f"{'' if pd.isna(r.p_wilcoxon) else f'{r.p_wilcoxon:.3f}'} | {r.a_wins}/{r.pairs} |")
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     print(f"\nwrote {out}")

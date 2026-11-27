@@ -45,7 +45,14 @@ ESUFFIX=""; (( EXPLORE_SEED > 0 )) && ESUFFIX="_e${EXPLORE_SEED}"
 # values are an ablation of the mixing ratio; their run names get _f<pct>.
 EXPLORE_PCT="${EXPLORE_PCT:-50}"
 FSUFFIX=""; [[ "$EXPLORE_PCT" != 50 ]] && FSUFFIX="_f${EXPLORE_PCT}"
-if [[ -n "$EXPLORE_METHOD" ]]; then RUN="mix-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}${ESUFFIX}${FSUFFIX}"; else RUN="demos_${SUFFIX}"; fi
+# STEPS other than 20000 (e.g. the demos-only 10k-step dilution control) add _t<steps> to the name.
+TSUFFIX=""; [[ "$STEPS" != 20000 ]] && TSUFFIX="_t${STEPS}"
+# TRAIN_MODE=seq is the two-stage condition: PRE_STEPS steps on the exploration data alone, then
+# STEPS - PRE_STEPS steps on the demos alone, starting from the stage-1 weights (fresh optimizer and
+# LR schedule, as a separate fine-tune would have). Same total steps as every other condition.
+TRAIN_MODE="${TRAIN_MODE:-mix}"
+PRE_STEPS="${PRE_STEPS:-10000}"
+if [[ -n "$EXPLORE_METHOD" ]]; then RUN="${TRAIN_MODE}-${EXPLORE_METHOD}-${EXPLORE_STEPS}_${SUFFIX}${ESUFFIX}${FSUFFIX}${TSUFFIX}"; else RUN="demos_${SUFFIX}${TSUFFIX}"; fi
 OUT="$RUNS_DIR/$RUN"
 
 DATA_ROOT=$(dataset_root)
@@ -66,7 +73,7 @@ echo "Training on episodes: $EPISODES"
 # raw source rows before training starts.
 SELECTION="$RUNS_DIR/selections/$RUN.json"
 BUILD_ARGS=()
-if [[ -n "$EXPLORE_METHOD" ]]; then
+if [[ -n "$EXPLORE_METHOD" && "$TRAIN_MODE" == mix ]]; then
   EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}${ESUFFIX}"
   [[ -f "$EXPLORE_ROOT/exploration_log.json" ]] || { echo "ERROR: no exploration data at $EXPLORE_ROOT; run 03_collect.sbatch first" >&2; exit 1; }
   BUILD_ARGS=(--explore-root "$EXPLORE_ROOT" --budget "$EXPLORE_STEPS" --explore-frac "$(awk -v p="$EXPLORE_PCT" 'BEGIN{print p/100}')")
@@ -80,6 +87,34 @@ fi
 cat "$TRAIN_DATA/mix_info.json"; echo
 DATA_ARGS=(--dataset.repo_id="local/$RUN" --dataset.root="$TRAIN_DATA")
 
+# Two-stage condition, stage 1: train on the exploration data alone (same seed), into its own dir.
+START_POLICY="$BASE_DIR"
+TRAIN_STEPS="$STEPS"
+if [[ "$TRAIN_MODE" == seq ]]; then
+  [[ -n "$EXPLORE_METHOD" ]] || { echo "ERROR: TRAIN_MODE=seq needs EXPLORE_METHOD" >&2; exit 1; }
+  EXPLORE_ROOT="$RUNS_DIR/exploration/${EXPLORE_METHOD}_${LIBERO_SUITE}_tasks${LIBERO_TASK_IDS//,/-}${ESUFFIX}"
+  [[ -f "$EXPLORE_ROOT/exploration_log.json" ]] || { echo "ERROR: no exploration data at $EXPLORE_ROOT" >&2; exit 1; }
+  PRE_DATA="$RUNS_DIR/traindata/${RUN}_stage1"
+  PRE_OUT="$RUNS_DIR/${RUN}_stage1"
+  if [[ ! -f "$PRE_DATA/verified" ]]; then
+    python hpc/build_dataset.py --demo-root "$DATA_ROOT" --selection "$SELECTION" --explore-root "$EXPLORE_ROOT" \
+      --budget "$EXPLORE_STEPS" --explore-only --out "$PRE_DATA"
+    python hpc/verify_training_data.py --root "$PRE_DATA" --selection "$SELECTION" --policy-dir "$BASE_DIR"
+    touch "$PRE_DATA/verified"
+  fi
+  PRE_CKPT="$PRE_OUT/checkpoints/$(printf %06d "$PRE_STEPS")/pretrained_model"
+  if [[ ! -d "$PRE_CKPT" ]]; then
+    [[ -d "$PRE_OUT" ]] && { mv "$PRE_OUT" "$PRE_OUT.failed-$(date +%Y%m%d-%H%M%S)"; echo "Moved a partial $PRE_OUT aside"; }
+    run_gpu "$SELF" lerobot-train --policy.path="$BASE_DIR" --policy.push_to_hub=false --policy.device=cuda \
+      --dataset.repo_id="local/${RUN}_stage1" --dataset.root="$PRE_DATA" --batch_size="$BATCH_SIZE" \
+      --steps="$PRE_STEPS" --save_freq="$PRE_STEPS" --env_eval_freq=0 --seed="$SEED" \
+      --output_dir="$PRE_OUT" --job_name="${RUN}_stage1" ${EXTRA_TRAIN_ARGS:-}
+  fi
+  START_POLICY="$PRE_CKPT"
+  TRAIN_STEPS=$((STEPS - PRE_STEPS))
+  echo "Stage 2: $TRAIN_STEPS demo-only steps from $START_POLICY"
+fi
+
 # lerobot-train refuses to reuse an existing output dir unless it is resuming, so the
 # episode selection above is saved under runs/selections/ instead of inside $OUT.
 # Training-time sim eval is off (env_eval_freq=0); we evaluate the final checkpoint below.
@@ -87,7 +122,7 @@ if [[ -d "$OUT" && ! -d "$OUT/checkpoints/last" ]]; then
   # A job that died before its first checkpoint: lerobot-train would refuse this dir.
   mv "$OUT" "$OUT.failed-$(date +%Y%m%d-%H%M%S)"; echo "Moved a partial $OUT aside"
 fi
-if [[ -d "$OUT/checkpoints/$(printf %06d "$STEPS")/pretrained_model" ]]; then
+if [[ -d "$OUT/checkpoints/$(printf %06d "$TRAIN_STEPS")/pretrained_model" ]]; then
   # Training finished in an earlier job that then died (e.g. in the eval): only evaluate.
   echo "Training already finished in $OUT; evaluating only"
 elif [[ -d "$OUT/checkpoints/last" ]]; then
@@ -96,12 +131,12 @@ elif [[ -d "$OUT/checkpoints/last" ]]; then
   run_gpu "$SELF" lerobot-train --resume=true --config_path="$OUT/checkpoints/last/pretrained_model/train_config.json"
 else
 run_gpu "$SELF" lerobot-train \
-  --policy.path="$BASE_DIR" \
+  --policy.path="$START_POLICY" \
   --policy.push_to_hub=false \
   --policy.device=cuda \
   "${DATA_ARGS[@]}" \
   --batch_size="$BATCH_SIZE" \
-  --steps="$STEPS" \
+  --steps="$TRAIN_STEPS" \
   --save_freq=5000 \
   --env_eval_freq=0 \
   --seed="$SEED" \
@@ -133,5 +168,6 @@ fi
 # /home is nearly full: keep only the final weights (and the 10k-step weights, for an
 # overfitting check), and drop optimizer states and the training dataset.
 bash hpc/cleanup_run.sh "$OUT"
+[[ "$TRAIN_MODE" == seq ]] && bash hpc/cleanup_run.sh "$PRE_OUT"
 rm -rf "$TRAIN_DATA"
 echo "Done: $OUT"

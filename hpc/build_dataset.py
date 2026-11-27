@@ -15,6 +15,7 @@ output's metadata is consistent by construction.
   fraction f of all frames at every budget (half by default); k = 1 with no exploration. Each demo's instruction must match the LIBERO language in --selection.
 - Exploration: the episodes from the start of the run up to --budget env steps (the 5k
   condition is the first 5k steps of the same run as the 20k condition).
+- --explore-only: only the exploration episodes (stage 1 of the two-stage "seq" condition).
 - Normalization: meta/stats.json is replaced by the full demo dataset's stats, which is what
   training on the demo dataset directly would use, so every condition normalizes identically.
 - sources.json maps every output episode to the source episode it was copied from; the
@@ -97,6 +98,8 @@ def main() -> None:
     p.add_argument("--budget", type=int, default=0, help="exploration env steps to use")
     p.add_argument("--explore-frac", type=float, default=0.5,
                    help="target fraction of exploration frames in the mix (demos are repeated to reach it)")
+    p.add_argument("--explore-only", action="store_true",
+                   help="write only the exploration episodes (stage 1 of the two-stage condition); demo stats still used")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--writer-threads", type=int, default=8)
     args = p.parse_args()
@@ -141,6 +144,10 @@ def main() -> None:
     if not 0 < f < 1:
         raise SystemExit(f"--explore-frac must be in (0, 1), got {f}")
     k = max(1, round(E * (1 - f) / (f * D))) if E else 1
+    if args.explore_only:
+        if not E:
+            raise SystemExit("--explore-only needs --explore-root and a budget")
+        k = 0
 
     if args.out.exists():
         shutil.rmtree(args.out)
@@ -180,6 +187,7 @@ def main() -> None:
                 "explore_method": log["method"] if log else None, "explore_budget_steps": args.budget if log else 0,
                 "explore_episodes": len(explore_eps), "explore_frames": E,
                 "explore_frac_target": f if log else 0,
+                "explore_only": args.explore_only,
                 "demo_fraction_of_frames": round(k * D / (k * D + E), 3),
                 "total_frames": k * D + E, "total_episodes": len(sources)}
     (args.out / "mix_info.json").write_text(json.dumps(info_out, indent=2))
