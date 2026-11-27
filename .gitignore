@@ -12,3 +12,4 @@ report/*.log
 report/*.out
 report/*.bbl
 report/*.blg
+video/*.mp4
