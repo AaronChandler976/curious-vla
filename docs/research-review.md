@@ -18,7 +18,7 @@ play and task-agnostic data used to train or fine-tune VLAs.
 | **ExORL**, Yarats et al. 2022 | For offline RL with reward relabeling, the exploration method that collects the data (ICM, RND, APT, random, ...) changes downstream performance a lot. | The closest "does the source matter" study, but with reward labels and offline RL. VLA fine-tuning has no reward; this project asks the same question for imitation. |
 | **DLR**, 2025 (arXiv 2511.19528) | Diverse RL-generated trajectories for VLA pretraining on LIBERO. | Multi-pattern RL with task reward, not task-free exploration. |
 | PDE, ExToken (2026) | Exploration inside VLA RL fine-tuning. | Exploration as an RL algorithm, not as data. |
-| Negative transfer and failure-data papers (2026, e.g. arXiv 2607.01586, FACT 2608.10232) | Pooling mismatched data under action-only supervision can make a VLA worse than no pretraining; failed rollouts help when used as negatives or recovery data, not as BC targets. | Predicts our main negative result. |
+| VLAFlow (arXiv 2607.01586) and FACT (arXiv 2608.10232), 2026 | Action-only pretraining on heterogeneous robot data is fragile; language supervision and future-latent alignment stabilize it. Failed rollouts help when used to model consequences, not as plain BC targets. | Consistent with our main negative result. |
 
 **Verdict.** No paper found compares curiosity-driven vs random exploration data as VLA
 fine-tuning data under matched budgets, so the narrowed question is still open. It is not a red

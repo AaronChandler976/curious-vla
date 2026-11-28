@@ -38,28 +38,29 @@ This project asks: \emph{at the same amount of collected data, does curiosity-dr
 
 \textbf{Curiosity and data for offline learning.} ICM~\cite{icm} rewards an agent for transitions its forward model cannot predict. ExORL~\cite{exorl} collects reward-free data with ICM, RND, APT and others and shows that the data source drives offline-RL performance. SENSEI~\cite{sensei} uses VLM judgments of interestingness to guide exploration.
 
-\textbf{Negative transfer.} Pooling mismatched robot data under an action-only loss can make a VLA worse than no pretraining~\cite{negtransfer}, and failed rollouts help when used as negatives or recovery data rather than as imitation targets~\cite{fact}.
+\textbf{Mixed-quality data.} Action-only pretraining on heterogeneous robot data is fragile, and language supervision and future-latent alignment make transfer more stable~\cite{negtransfer}; failed rollouts help when used as negatives or recovery data rather than as imitation targets~\cite{fact}.
 
 \section{Method}
 \subsection{Problem formulation}
 Let $\mathcal{D}_n$ be $n$ demonstrations per task for tasks $T=\{0,1\}$ of LIBERO-Object, and $\mathcal{E}_m^{s}$ the first $m$ environment steps collected by explorer $s\in\{\text{random},\text{ICM}\}$ in the same scenes, without task labels or rewards. A policy $\pi_\theta(a_{t:t+49}\mid o_t, \ell)$ maps camera images, the 8-D robot state and an instruction $\ell$ to a 7-D action chunk. We fine-tune $\pi_\theta$ on $\mathcal{D}_n$ alone or on $\mathcal{D}_n\cup\mathcal{E}_m^{s}$ with a fixed number of gradient steps, and measure task success over 50 rollouts per task. The quantity of interest is the change in success per unit of collected exploration data, $\Delta_s(n,m)=\mathrm{SR}(\mathcal{D}_n\cup\mathcal{E}^s_m)-\mathrm{SR}(\mathcal{D}_n)$, and the source effect $\Delta_{\text{ICM}}-\Delta_{\text{random}}$.
 
 \subsection{System}
-Fig.~\ref{fig:arch} shows the pipeline. \pending{describe; TikZ placeholder below}
+Fig.~\ref{fig:arch} shows the pipeline. Explorers act in the same two LIBERO-Object scenes as the demonstrations and record every step through LeRobot's LIBERO wrapper, so observations (two $256\times256$ cameras rotated as in the demonstrations, 8-D state) and actions (7-D, gripper $\pm1$) have exactly the demonstration format, which a format check verifies. A builder writes each training set as a fresh LeRobot dataset from raw parquet rows (demonstrations only, a mix, or exploration only), and a verifier loads it exactly as the trainer does and compares sampled frames, 50-step action chunks and instructions with the source rows. A dry run executes every code path on CPU before any GPU job is queued. On the cluster, a cron-driven autopilot submits every run in the experiment plan, resubmits jobs that land on faulty nodes, and refreshes the analysis.
 
 \begin{figure}[t]\centering
-\begin{tikzpicture}[font=\scriptsize, node distance=0.35cm and 0.4cm,
- box/.style={draw, rounded corners=2pt, align=center, minimum height=0.75cm, text width=1.55cm},
- arr/.style={-{Stealth[length=1.6mm]}}]
-\node[box] (d) {LIBERO demos\\$n$/task};
-\node[box, below=of d] (r) {Random\\explorer};
-\node[box, below=of r] (i) {ICM explorer\\(PPO)};
-\node[box, right=0.6cm of r] (b) {Build + verify\\training set};
-\node[box, right=of b] (t) {SmolVLA\\fine-tune};
-\node[box, right=of t] (e) {LIBERO\\eval};
+\begin{tikzpicture}[font=\scriptsize, node distance=0.3cm and 0.32cm,
+ box/.style={draw, rounded corners=2pt, align=center, minimum height=0.8cm, text width=1.45cm, fill=white},
+ data/.style={box, fill=blue!6}, arr/.style={-{Stealth[length=1.6mm]}}]
+\node[data] (d) {LIBERO demos\\$n\in\{10,25,40\}$};
+\node[box, below=of d, fill=orange!10] (r) {Random\\explorer};
+\node[box, below=of r, fill=green!8] (i) {ICM explorer\\(PPO)};
+\node[box, right=0.45cm of r] (b) {Build + verify\\training set\\(demo stats)};
+\node[box, right=of b] (t) {SmolVLA\\fine-tune\\(expert only)};
+\node[box, right=of t] (e) {LIBERO eval\\$2\times50$ eps};
 \draw[arr] (d) -| (b); \draw[arr] (r) -- (b); \draw[arr] (i) -| (b); \draw[arr] (b) -- (t); \draw[arr] (t) -- (e);
+\node[below=0.15cm of t, text width=3.6cm, align=center, font=\tiny] {mix: 50\% exploration frames, 20k steps\\two-stage: 10k exploration, then 10k demos};
 \end{tikzpicture}
-\caption{Pipeline. Every condition is built by the same script from raw dataset rows and verified frame by frame before training.}
+\caption{Pipeline. Every condition is built by the same script from raw dataset rows and verified frame by frame before training; only the training set differs between conditions.}
 \label{fig:arch}
 \end{figure}
 
@@ -141,8 +142,8 @@ Adding task-free exploration data to SmolVLA fine-tuning with a behavior-cloning
 \bibitem{exorl} D. Yarats et al., ``Don't change the algorithm, change the data: Exploratory data for offline reinforcement learning,'' arXiv:2201.13425, 2022.
 \bibitem{icm} D. Pathak et al., ``Curiosity-driven exploration by self-supervised prediction,'' ICML, 2017.
 \bibitem{sensei} C. Sancaktar et al., ``SENSEI: Semantic exploration guided by foundation models to learn versatile world models,'' ICML, 2025.
-\bibitem{dlr} \pending{authors}, ``Discover, learn, and reinforce: Scaling vision-language-action pretraining with diverse RL-generated trajectories,'' arXiv:2511.19528, 2025.
-\bibitem{negtransfer} \pending{authors}, arXiv:2607.01586, 2026.
-\bibitem{fact} \pending{authors}, ``FACT: Failure-aware causal training for world-action models,'' arXiv:2608.10232, 2026.
+\bibitem{dlr} R. Yang et al., ``Discover, learn, and reinforce: Scaling vision-language-action pretraining with diverse RL-generated trajectories,'' arXiv:2511.19528, 2025.
+\bibitem{negtransfer} G. Xia et al., ``VLAFlow: A unified training framework for vision-language-action models via co-training and future latent alignment,'' arXiv:2607.01586, 2026.
+\bibitem{fact} Q. Peng et al., ``FACT: Failure-aware causal training for world-action models,'' arXiv:2608.10232, 2026.
 \end{thebibliography}
 \end{document}
